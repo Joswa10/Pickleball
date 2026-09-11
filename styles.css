@@ -220,7 +220,7 @@ input[type="text"].input-error {
 }
 
 .court-visual {
-  background: var(--court-blue);
+  background: var(--court-blue, #3b5266); /* Dark slate blue */
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -238,7 +238,7 @@ input[type="text"].input-error {
   left: 0;
   right: 0;
   height: 40%;
-  background: var(--kitchen-blue);
+  background: var(--kitchen-blue, #5b6e68); /* Olive-slate grey-green */
   pointer-events: none;
 }
 
