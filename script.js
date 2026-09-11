@@ -198,7 +198,7 @@ function renderHistory() {
     item.innerHTML = `
       <strong>${team1Text}</strong> (${match.team1Score}) vs 
       <strong>${team2Text}</strong> (${match.team2Score})
-      <span style="float: right; color: #666; font-size: 0.75rem;">${match.time}</span>
+      <span style="float: right; color: #556b55; font-size: 0.72rem; font-weight: 600;">${match.time}</span>
     `;
     historyList.appendChild(item);
   });
