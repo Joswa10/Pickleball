@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Pickle Yang</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -25,85 +25,84 @@
           <button id="addBtn" class="btn-primary">+ Add</button>
         </div>
         <ul id="queueList" class="scroll-list"></ul>
-        <div class="action-row" style="margin-top: 8px;">
-          <button id="removeBtn" class="btn-danger-light" style="flex:1;">Remove</button>
-          <button id="clearQueueBtn" class="btn-danger" style="flex:1;">Clear Queue</button>
+        <div class="action-row">
+          <button id="removeBtn" class="btn-danger-light">Remove</button>
+          <button id="clearQueueBtn" class="btn-danger">Clear Queue</button>
         </div>
       </section>
 
       <!-- Court Section -->
-      <section class="court-section">
-        <div class="card court-card">
-          <h2>Court</h2>
-          <div class="team-label">Team 1 (Top Side)</div>
-          
-          <div class="court-visual">
-            <div class="kitchen-zone"></div>
-            <!-- Net Element -->
-            <div class="court-net"></div>
+      <section class="card court-card">
+        <h2>Court</h2>
+        <div class="team-label">Team 1 (Top Side)</div>
+        
+        <div class="court-visual">
+          <div class="kitchen-zone"></div>
+          <div class="court-net"></div>
 
-            <div class="slot" id="slot0">
-              <span class="player-name">— —</span>
-              <div class="score-control">
-                <button class="score-btn score-minus" onclick="adjustScore(0, -1)">-</button>
-                <span class="score-val" id="score0">0</span>
-                <button class="score-btn score-plus" onclick="adjustScore(0, 1)">+</button>
-              </div>
-            </div>
-
-            <div class="slot" id="slot1">
-              <span class="player-name">— —</span>
-              <div class="score-control">
-                <button class="score-btn score-minus" onclick="adjustScore(1, -1)">-</button>
-                <span class="score-val" id="score1">0</span>
-                <button class="score-btn score-plus" onclick="adjustScore(1, 1)">+</button>
-              </div>
-            </div>
-
-            <div class="slot" id="slot2">
-              <span class="player-name">— —</span>
-              <div class="score-control">
-                <button class="score-btn score-minus" onclick="adjustScore(2, -1)">-</button>
-                <span class="score-val" id="score2">0</span>
-                <button class="score-btn score-plus" onclick="adjustScore(2, 1)">+</button>
-              </div>
-            </div>
-
-            <div class="slot" id="slot3">
-              <span class="player-name">— —</span>
-              <div class="score-control">
-                <button class="score-btn score-minus" onclick="adjustScore(3, -1)">-</button>
-                <span class="score-val" id="score3">0</span>
-                <button class="score-btn score-plus" onclick="adjustScore(3, 1)">+</button>
-              </div>
+          <div class="slot" id="slot0">
+            <span class="player-name">— —</span>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(0, -1)">-</button>
+              <span class="score-val" id="score0">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(0, 1)">+</button>
             </div>
           </div>
 
-          <div class="team-label">Team 2 (Bottom Side)</div>
-          <button id="saveBtn" class="btn-primary" style="margin-top: 8px;" disabled>S A V E</button>
+          <div class="slot" id="slot1">
+            <span class="player-name">— —</span>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(1, -1)">-</button>
+              <span class="score-val" id="score1">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(1, 1)">+</button>
+            </div>
+          </div>
+
+          <div class="slot" id="slot2">
+            <span class="player-name">— —</span>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(2, -1)">-</button>
+              <span class="score-val" id="score2">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(2, 1)">+</button>
+            </div>
+          </div>
+
+          <div class="slot" id="slot3">
+            <span class="player-name">— —</span>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(3, -1)">-</button>
+              <span class="score-val" id="score3">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(3, 1)">+</button>
+            </div>
+          </div>
         </div>
 
-        <div class="card finished-card">
-          <h2>Recently Finished Players</h2>
-          <div id="finishedContainer" class="scroll-list"></div>
-        </div>
+        <div class="team-label">Team 2 (Bottom Side)</div>
+        <button id="saveBtn" class="btn-primary full-width-btn" disabled>S A V E</button>
+      </section>
+
+      <!-- Action Buttons Placement -->
+      <section class="court-actions-bar">
+        <button id="shuffleBtn" class="btn-secondary">Shuffle</button>
+        <button id="fillCourtBtn" class="btn-primary">Fill Court</button>
+        <button id="resetCourtBtn" class="btn-warning">Reset Court</button>
+      </section>
+
+      <!-- Recently Finished Players -->
+      <section class="card">
+        <h2>Recently Finished Players</h2>
+        <div id="finishedContainer" class="scroll-list"></div>
       </section>
 
       <!-- Match History -->
       <section class="card">
         <div class="card-header">
           <h2>Match History</h2>
-          <button id="clearHistoryBtn" class="btn-danger-light">Clear</button>
+          <button id="clearHistoryBtn" class="btn-danger-light small-btn">Clear</button>
         </div>
         <div id="historyList" class="scroll-list"></div>
       </section>
     </main>
-
-    <footer>
-      <button id="shuffleBtn" class="btn-secondary">Shuffle</button>
-      <button id="fillCourtBtn" class="btn-primary">Fill Court</button>
-      <button id="resetCourtBtn" class="btn-warning">Reset Court</button>
-    </footer>
   </div>
 
   <script src="script.js"></script>
