@@ -13,6 +13,7 @@
 * {
   box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
 }
 
 html, body {
@@ -124,7 +125,7 @@ input[type="text"] {
   padding: 8px 10px;
   border: 1.5px solid var(--light-green);
   border-radius: 6px;
-  font-size: 0.82rem;
+  font-size: 16px;
   font-weight: 500;
   color: var(--text-dark);
   outline: none;
@@ -231,6 +232,7 @@ input[type="text"]::placeholder {
   color: var(--dark-green);
   min-width: 16px;
   text-align: center;
+  user-select: none;
 }
 
 .score-btn {
@@ -245,6 +247,9 @@ input[type="text"]::placeholder {
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 .score-minus {
@@ -276,10 +281,18 @@ button {
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: opacity 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 button:active {
   opacity: 0.85;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .full-width-btn {
