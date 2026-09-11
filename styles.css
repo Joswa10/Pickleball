@@ -1,13 +1,12 @@
 :root {
-  /* Colors sampled from your court photo */
-  --court-blue: #3b5266;    /* Dark slate blue for the main court playing area */
-  --kitchen-blue: #5b6e68;  /* Olive-slate grey-green for the kitchen/non-volley zone */
-
-  /* Keep your other existing variables below */
-  --dark-green: #2d5a52;
-  --mid-green: #3b7a6f;
-  --light-green: #b2d8d0;
-  --pale-green: #eaf4f2;
+  --dark-green: #2d5a52;   /* Deep frosty teal for the top header */
+  --mid-green: #3b7a6f;    /* Smooth sage-teal for buttons */
+  --light-green: #b2d8d0;  /* Pale mint for card borders & input outlines */
+  --pale-green: #eaf4f2;   /* Very light frosty green for the main app background */
+  
+  /* Keep the rest of your variables the same below */
+ --court-blue: #3b5266;    /* Dark slate blue for the main court playing area */
+  --kitchen-blue: #5b6e68;
   --text-dark: #1c2e2a;
   --text-muted: #527068;
   --danger-red: #c62828;
