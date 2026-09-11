@@ -363,11 +363,6 @@ function renderHistory() {
     line.appendChild(vs);
     line.appendChild(t2);
 
-    line.appendChild(icon);
-    line.appendChild(t1);
-    line.appendChild(vs);
-    line.appendChild(t2);
-
     const time = document.createElement('span');
     time.className = 'history-time';
     time.textContent = match.time;
