@@ -188,18 +188,18 @@ function renderHistory() {
     const team1Text = match.team1.join(' & ');
     const team2Text = match.team2.join(' & ');
     
-    let outcomeText = '';
+    let outcomeHTML = '';
     if (match.team1Score > match.team2Score) {
-      outcomeText = `<b style="color: #2e7d32;">🏆 ${team1Text} (${match.team1Score})</b> vs ${team2Text} (${match.team2Score})`;
+      outcomeHTML = `🏆 <b>${team1Text}</b> (${match.team1Score}) vs ${team2Text} (${match.team2Score})`;
     } else if (match.team2Score > match.team1Score) {
-      outcomeText = `${team1Text} (${match.team1Score}) vs <b style="color: #2e7d32;">🏆 ${team2Text} (${match.team2Score})</b>`;
+      outcomeHTML = `${team1Text} (${match.team1Score}) vs 🏆 <b>${team2Text}</b> (${match.team2Score})`;
     } else {
-      outcomeText = `<b>🤝 TIE:</b> ${team1Text} (${match.team1Score}) vs ${team2Text} (${match.team2Score})`;
+      outcomeHTML = `🤝 <b>TIE:</b> ${team1Text} (${match.team1Score}) vs ${team2Text} (${match.team2Score})`;
     }
     
     item.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <span>${outcomeText}</span>
+        <span>${outcomeHTML}</span>
         <span style="color: #556b55; font-size: 0.72rem; font-weight: 600; margin-left: 8px;">${match.time}</span>
       </div>
     `;
