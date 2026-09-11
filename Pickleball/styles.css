@@ -1,0 +1,216 @@
+:root {
+  --dark-green: #1b5e20;
+  --mid-green: #388e3c;
+  --light-green: #81c784;
+  --pale-green: #e8f5e9;
+  --court-blue: #1e88e5;
+  --kitchen-blue: #64b5f6;
+  --text-dark: #1b3c1e;
+  --danger-red: #c62828;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #121212; /* Dark background to highlight the phone frame */
+  color: var(--text-dark);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* Mobile Phone Frame Wrapper */
+.app-frame {
+  width: 100%;
+  max-width: 414px; /* Standard phone width */
+  height: 100vh;
+  max-height: 896px; /* Standard phone height */
+  background-color: var(--pale-green);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+header {
+  background-color: var(--dark-green);
+  color: white;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+header p {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+/* Single-column scrollable container for mobile */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.input-row, .action-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--light-green);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.scroll-list {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--light-green);
+  border-radius: 6px;
+  background: var(--pale-green);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.scroll-list li, .history-item {
+  padding: 8px;
+  border-bottom: 1px solid var(--light-green);
+  font-size: 0.85rem;
+}
+
+.court-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.court-visual {
+  background: var(--court-blue);
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+  border: 3px solid white;
+  height: 180px;
+}
+
+.kitchen-zone {
+  position: absolute;
+  top: 33%;
+  left: 0;
+  right: 0;
+  height: 34%;
+  background: var(--kitchen-blue);
+  pointer-events: none;
+}
+
+.slot {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--dark-green);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  padding: 4px;
+}
+
+.player-name {
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.pts-controls {
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.slot input {
+  width: 36px;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.team-label {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.8rem;
+  color: var(--dark-green);
+  margin: 2px 0;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: bold;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-primary { background: var(--mid-green); color: white; }
+.btn-secondary { background: var(--mid-green); color: white; }
+.btn-danger { background: var(--danger-red); color: white; }
+.btn-danger-light { background: #ef9a9a; color: var(--text-dark); }
+.btn-warning { background: #ffe082; color: var(--text-dark); }
+
+footer {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px;
+  background: var(--pale-green);
+  border-top: 1px solid var(--light-green);
+}
+
+.requeue-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 6px;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+}
