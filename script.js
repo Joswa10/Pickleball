@@ -160,7 +160,7 @@ function renderQueue() {
   if (waitingQueue.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'empty-hint';
-    empty.textContent = 'No players waiting — add one above';
+    empty.textContent = 'No players waiting';
     queueList.appendChild(empty);
   } else {
     waitingQueue.forEach((player, index) => {
