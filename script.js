@@ -338,8 +338,6 @@ function renderHistory() {
     item.className = 'history-item';
 
     const [p0, p1, p2, p3] = match.players;
-    const team1Text = `${p0.name} & ${p1.name}`;
-    const team2Text = `${p2.name} & ${p3.name}`;
 
     let winner = null;
     if (match.team1Total > match.team2Total) winner = 1;
@@ -349,13 +347,21 @@ function renderHistory() {
     line.className = 'history-line';
 
     const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
+
     const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
-    t1.textContent = `${team1Text} [${match.team1Total}]`;
+    t1.textContent = `${p0.name} (${p0.score})  ${p1.name} (${p1.score})`;
+
     const vs = document.createElement('span');
     vs.className = 'vs-label';
     vs.textContent = ' VS ';
+
     const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
-    t2.textContent = `${team2Text} [${match.team2Total}]`;
+    t2.textContent = `${p2.name} (${p2.score})  ${p3.name} (${p3.score})`;
+
+    line.appendChild(icon);
+    line.appendChild(t1);
+    line.appendChild(vs);
+    line.appendChild(t2);
 
     line.appendChild(icon);
     line.appendChild(t1);
