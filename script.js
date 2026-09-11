@@ -349,14 +349,14 @@ function renderHistory() {
     const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
 
     const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
-    t1.textContent = `${p0.name} (${p0.score})  ${p1.name} (${p1.score})`;
+    t1.textContent = `${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${match.team1Total}]`;
 
     const vs = document.createElement('span');
     vs.className = 'vs-label';
     vs.textContent = ' VS ';
 
     const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
-    t2.textContent = `${p2.name} (${p2.score})  ${p3.name} (${p3.score})`;
+    t2.textContent = `${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${match.team2Total}]`;
 
     line.appendChild(icon);
     line.appendChild(t1);
