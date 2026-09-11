@@ -136,8 +136,10 @@ function saveMatch() {
   const team2Total = s2 + s3;
 
   const matchRecord = {
-    team1: [{ name: p0, score: s0 }, { name: p1, score: s1 }],
-    team2: [{ name: p2, score: s2 }, { name: p3, score: s3 }],
+    p0: `${p0} (${s0})`,
+    p1: `${p1} (${s1})`,
+    p2: `${p2} (${s2})`,
+    p3: `${p3} (${s3})`,
     team1Total,
     team2Total,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -185,17 +187,16 @@ function renderHistory() {
     const item = document.createElement('div');
     item.className = 'history-item';
     
-    // Individual players with scores
-    const team1Str = `${match.team1[0].name} (${match.team1[0].score}) & ${match.team1[1].name} (${match.team1[1].score})`;
-    const team2Str = `${match.team2[0].name} (${match.team2[0].score}) & ${match.team2[1].name} (${match.team2[1].score})`;
+    const team1Text = `${match.p0} & ${match.p1}`;
+    const team2Text = `${match.p2} & ${match.p3}`;
     
     let outcomeHTML = '';
     if (match.team1Total > match.team2Total) {
-      outcomeHTML = `🏆 <b style="color: #2e7d32;">${team1Str}</b> [${match.team1Total}] vs ${team2Str} [${match.team2Total}]`;
+      outcomeHTML = `🏆 <b>${team1Text}</b> [${match.team1Total}] vs ${team2Text} [${match.team2Total}]`;
     } else if (match.team2Total > match.team1Total) {
-      outcomeHTML = `${team1Str} [${match.team1Total}] vs 🏆 <b style="color: #2e7d32;">${team2Str}</b> [${match.team2Total}]`;
+      outcomeHTML = `${team1Text} [${match.team1Total}] vs 🏆 <b>${team2Text}</b> [${match.team2Total}]`;
     } else {
-      outcomeHTML = `🤝 <b>TIE:</b> ${team1Str} [${match.team1Total}] vs ${team2Str} [${match.team2Total}]`;
+      outcomeHTML = `🤝 <b>TIE:</b> ${team1Text} [${match.team1Total}] vs ${team2Text} [${match.team2Total}]`;
     }
     
     item.innerHTML = `
