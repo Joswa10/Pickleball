@@ -1,212 +1,278 @@
-// State Management
-let waitingQueue = [];
-let matchHistory = [];
-let recentlyFinished = [];
-
-// DOM Elements
-const nameInput = document.getElementById('nameInput');
-const addBtn = document.getElementById('addBtn');
-const removeBtn = document.getElementById('removeBtn');
-const clearQueueBtn = document.getElementById('clearQueueBtn');
-const queueList = document.getElementById('queueList');
-const queueCount = document.getElementById('queueCount');
-
-const fillCourtBtn = document.getElementById('fillCourtBtn');
-const resetCourtBtn = document.getElementById('resetCourtBtn');
-const shuffleBtn = document.getElementById('shuffleBtn');
-const saveBtn = document.getElementById('saveBtn');
-
-const finishedContainer = document.getElementById('finishedContainer');
-const historyList = document.getElementById('historyList');
-const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-
-// Initialize App
-document.addEventListener('DOMContentLoaded', () => {
-  addBtn.addEventListener('click', addPlayerToQueue);
-  nameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') addPlayerToQueue();
-  });
-
-  removeBtn.addEventListener('click', removeLastPlayer);
-  clearQueueBtn.addEventListener('click', clearQueue);
-
-  fillCourtBtn.addEventListener('click', fillCourt);
-  resetCourtBtn.addEventListener('click', resetCourt);
-  shuffleBtn.addEventListener('click', shuffleQueue);
-  saveBtn.addEventListener('click', saveMatch);
-
-  clearHistoryBtn.addEventListener('click', clearHistory);
-});
-
-// Score Control Handler
-function adjustScore(slotIndex, delta) {
-  const scoreElement = document.getElementById(`score${slotIndex}`);
-  if (!scoreElement) return;
-
-  let currentScore = parseInt(scoreElement.textContent, 10) || 0;
-  currentScore = Math.max(0, currentScore + delta);
-  scoreElement.textContent = currentScore;
+:root {
+  --dark-green: #1b5e20;
+  --mid-green: #388e3c;
+  --light-green: #81c784;
+  --pale-green: #e8f5e9;
+  --court-blue: #1e88e5;
+  --kitchen-blue: #64b5f6;
+  --text-dark: #1b3c1e;
+  --danger-red: #c62828;
 }
 
-// Queue Management Functions
-function addPlayerToQueue() {
-  const name = nameInput.value.trim();
-  if (!name) return;
-
-  waitingQueue.push(name);
-  nameInput.value = '';
-  renderQueue();
+* {
+  box-sizing: border-box;
 }
 
-function removeLastPlayer() {
-  if (waitingQueue.length > 0) {
-    waitingQueue.pop();
-    renderQueue();
-  }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* Prevents whole screen scrolling */
+  background-color: #121212;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-function clearQueue() {
-  waitingQueue = [];
-  renderQueue();
+.app-frame {
+  width: 100%;
+  max-width: 414px;
+  height: 100vh;
+  background-color: var(--pale-green);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-function renderQueue() {
-  queueList.innerHTML = '';
-  waitingQueue.forEach((player, index) => {
-    const li = document.createElement('li');
-    li.textContent = `${index + 1}. ${player}`;
-    queueList.appendChild(li);
-  });
-  queueCount.textContent = `${waitingQueue.length} player${waitingQueue.length !== 1 ? 's' : ''}`;
+header {
+  background-color: var(--dark-green);
+  color: white;
+  padding: 8px 12px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
-function shuffleQueue() {
-  for (let i = waitingQueue.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [waitingQueue[i], waitingQueue[j]] = [waitingQueue[j], waitingQueue[i]];
-  }
-  renderQueue();
+header h1 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
-// Court Functions
-function fillCourt() {
-  if (waitingQueue.length < 4) {
-    alert('You need at least 4 players in the waiting queue to fill the court!');
-    return;
-  }
-
-  for (let i = 0; i < 4; i++) {
-    const playerName = waitingQueue.shift();
-    const slot = document.getElementById(`slot${i}`);
-    slot.querySelector('.player-name').textContent = playerName;
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  renderQueue();
-  saveBtn.disabled = false;
+header p {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
+  opacity: 0.8;
 }
 
-function resetCourt() {
-  for (let i = 0; i < 4; i++) {
-    const slot = document.getElementById(`slot${i}`);
-    const nameSpan = slot.querySelector('.player-name');
-    
-    // Return active court players back to top of queue if not default
-    if (nameSpan.textContent !== '— —') {
-      waitingQueue.unshift(nameSpan.textContent);
-      nameSpan.textContent = '— —';
-    }
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  renderQueue();
-  saveBtn.disabled = true;
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  flex: 1;
+  overflow: hidden; /* Strict height containment */
 }
 
-// Match Handling & History
-function saveMatch() {
-  const p0 = document.querySelector('#slot0 .player-name').textContent;
-  const p1 = document.querySelector('#slot1 .player-name').textContent;
-  const p2 = document.querySelector('#slot2 .player-name').textContent;
-  const p3 = document.querySelector('#slot3 .player-name').textContent;
-
-  if (p0 === '— —' || p1 === '— —' || p2 === '— —' || p3 === '— —') {
-    alert('Please fill all court slots before saving the match.');
-    return;
-  }
-
-  const s0 = parseInt(document.getElementById('score0').textContent, 10) || 0;
-  const s1 = parseInt(document.getElementById('score1').textContent, 10) || 0;
-  const s2 = parseInt(document.getElementById('score2').textContent, 10) || 0;
-  const s3 = parseInt(document.getElementById('score3').textContent, 10) || 0;
-
-  const team1Score = s0 + s1;
-  const team2Score = s2 + s3;
-
-  const matchRecord = {
-    team1: [p0, p1],
-    team2: [p2, p3],
-    team1Score,
-    team2Score,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  };
-
-  matchHistory.unshift(matchRecord);
-  recentlyFinished = [p0, p1, p2, p3];
-
-  renderHistory();
-  renderRecentlyFinished();
-
-  // Reset court slots after saving
-  for (let i = 0; i < 4; i++) {
-    document.querySelector(`#slot${i} .player-name`).textContent = '— —';
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  saveBtn.disabled = true;
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-function renderRecentlyFinished() {
-  finishedContainer.innerHTML = '';
-  if (recentlyFinished.length === 0) return;
-
-  recentlyFinished.forEach(player => {
-    const row = document.createElement('div');
-    row.className = 'requeue-row';
-    row.innerHTML = `
-      <span>${player}</span>
-      <button class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="requeuePlayer('${player}')">+ Requeue</button>
-    `;
-    finishedContainer.appendChild(row);
-  });
+.card h2 {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
 }
 
-function requeuePlayer(name) {
-  waitingQueue.push(name);
-  recentlyFinished = recentlyFinished.filter(p => p !== name);
-  renderQueue();
-  renderRecentlyFinished();
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
 }
 
-function renderHistory() {
-  historyList.innerHTML = '';
-  matchHistory.forEach((match) => {
-    const item = document.createElement('div');
-    item.className = 'history-item';
-    
-    const team1Text = match.team1.join(' & ');
-    const team2Text = match.team2.join(' & ');
-    
-    item.innerHTML = `
-      <strong>${team1Text}</strong> (${match.team1Score}) vs 
-      <strong>${team2Text}</strong> (${match.team2Score})
-      <span style="float: right; color: #666; font-size: 0.75rem;">${match.time}</span>
-    `;
-    historyList.appendChild(item);
-  });
+.card-header span {
+  font-size: 0.75rem;
+  color: #555;
 }
 
-function clearHistory() {
-  matchHistory = [];
-  renderHistory();
+.input-row, .action-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.action-row button {
+  flex: 1;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 6px;
+  border: 1px solid var(--light-green);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.scroll-list {
+  max-height: 55px;
+  overflow-y: auto;
+  border: 1px solid var(--light-green);
+  border-radius: 6px;
+  background: var(--pale-green);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.scroll-list li, .history-item {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--light-green);
+  font-size: 0.75rem;
+}
+
+/* Fixed Court Grid Visuals */
+.court-card {
+  padding: 6px;
+}
+
+.court-visual {
+  background: var(--court-blue);
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px;
+  padding: 6px;
+  border: 2px solid white;
+  height: 140px;
+}
+
+.kitchen-zone {
+  position: absolute;
+  top: 30%;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: var(--kitchen-blue);
+  pointer-events: none;
+}
+
+.court-net {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed white;
+  z-index: 2;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.slot {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--dark-green);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  padding: 2px;
+}
+
+.player-name {
+  font-size: 0.75rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.score-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.score-val {
+  font-weight: bold;
+  font-size: 0.8rem;
+  min-width: 14px;
+  text-align: center;
+}
+
+.score-btn {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.score-minus {
+  background: rgba(255, 205, 210, 0.85);
+  color: #b71c1c;
+}
+
+.score-plus {
+  background: rgba(200, 230, 201, 0.85);
+  color: #1b5e20;
+}
+
+.team-label {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.7rem;
+  color: var(--dark-green);
+  margin: 1px 0;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.full-width-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.small-btn {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+}
+
+/* Action bar above Recently Finished Players */
+.court-actions-bar {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.court-actions-bar button {
+  flex: 1;
+}
+
+.btn-primary { background: var(--mid-green); color: white; }
+.btn-secondary { background: var(--mid-green); color: white; }
+.btn-danger { background: var(--danger-red); color: white; }
+.btn-danger-light { background: #ef9a9a; color: var(--text-dark); }
+.btn-warning { background: #ffe082; color: var(--text-dark); }
+
+.requeue-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 4px 6px;
+  margin-bottom: 2px;
+  font-size: 0.75rem;
 }
