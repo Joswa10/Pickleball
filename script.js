@@ -1,9 +1,7 @@
-// State Management
 let waitingQueue = [];
 let matchHistory = [];
 let recentlyFinished = [];
 
-// DOM Elements
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
 const removeBtn = document.getElementById('removeBtn');
@@ -20,7 +18,6 @@ const finishedContainer = document.getElementById('finishedContainer');
 const historyList = document.getElementById('historyList');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
-// Initialize App
 document.addEventListener('DOMContentLoaded', () => {
   addBtn.addEventListener('click', addPlayerToQueue);
   nameInput.addEventListener('keypress', (e) => {
@@ -38,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
   clearHistoryBtn.addEventListener('click', clearHistory);
 });
 
-// Score Control Handler
 function adjustScore(slotIndex, delta) {
   const scoreElement = document.getElementById(`score${slotIndex}`);
   if (!scoreElement) return;
@@ -48,7 +44,6 @@ function adjustScore(slotIndex, delta) {
   scoreElement.textContent = currentScore;
 }
 
-// Queue Management Functions
 function addPlayerToQueue() {
   const name = nameInput.value.trim();
   if (!name) return;
@@ -88,7 +83,6 @@ function shuffleQueue() {
   renderQueue();
 }
 
-// Court Functions
 function fillCourt() {
   if (waitingQueue.length < 4) {
     alert('You need at least 4 players in the waiting queue to fill the court!');
@@ -122,7 +116,6 @@ function resetCourt() {
   saveBtn.disabled = true;
 }
 
-// Match Handling & History
 function saveMatch() {
   const p0 = document.querySelector('#slot0 .player-name').textContent;
   const p1 = document.querySelector('#slot1 .player-name').textContent;
@@ -195,10 +188,20 @@ function renderHistory() {
     const team1Text = match.team1.join(' & ');
     const team2Text = match.team2.join(' & ');
     
+    let outcomeText = '';
+    if (match.team1Score > match.team2Score) {
+      outcomeText = `<b style="color: #2e7d32;">🏆 ${team1Text} (${match.team1Score})</b> vs ${team2Text} (${match.team2Score})`;
+    } else if (match.team2Score > match.team1Score) {
+      outcomeText = `${team1Text} (${match.team1Score}) vs <b style="color: #2e7d32;">🏆 ${team2Text} (${match.team2Score})</b>`;
+    } else {
+      outcomeText = `<b>🤝 TIE:</b> ${team1Text} (${match.team1Score}) vs ${team2Text} (${match.team2Score})`;
+    }
+    
     item.innerHTML = `
-      <strong>${team1Text}</strong> (${match.team1Score}) vs 
-      <strong>${team2Text}</strong> (${match.team2Score})
-      <span style="float: right; color: #556b55; font-size: 0.72rem; font-weight: 600;">${match.time}</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <span>${outcomeText}</span>
+        <span style="color: #556b55; font-size: 0.72rem; font-weight: 600; margin-left: 8px;">${match.time}</span>
+      </div>
     `;
     historyList.appendChild(item);
   });
