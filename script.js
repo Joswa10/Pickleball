@@ -1,3 +1,5 @@
+const EMPTY_SLOT = '— —';
+
 let waitingQueue = [];
 let matchHistory = [];
 let recentlyFinished = [];
@@ -23,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   nameInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addPlayerToQueue();
   });
+  nameInput.addEventListener('input', () => nameInput.classList.remove('input-error'));
 
   removeBtn.addEventListener('click', removeLastPlayer);
   clearQueueBtn.addEventListener('click', clearQueue);
@@ -33,8 +36,34 @@ document.addEventListener('DOMContentLoaded', () => {
   saveBtn.addEventListener('click', saveMatch);
 
   clearHistoryBtn.addEventListener('click', clearHistory);
+
+  renderQueue();
+  renderRecentlyFinished();
+  renderHistory();
+  updateCourtButtons();
 });
 
+/* ---------------------------------------------------------
+   Toast — small non-blocking notifications (mobile-friendly,
+   replaces jarring alert() popups)
+--------------------------------------------------------- */
+let toastTimer = null;
+function showToast(message, isError = false) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    document.querySelector('.app-frame').appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.className = 'toast show' + (isError ? ' toast-error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+/* ---------------------------------------------------------
+   Score controls
+--------------------------------------------------------- */
 function adjustScore(slotIndex, delta) {
   const scoreElement = document.getElementById(`score${slotIndex}`);
   if (!scoreElement) return;
@@ -44,32 +73,59 @@ function adjustScore(slotIndex, delta) {
   scoreElement.textContent = currentScore;
 }
 
+/* ---------------------------------------------------------
+   Helpers shared across queue / court
+--------------------------------------------------------- */
 function getCourtPlayers() {
   const players = [];
   for (let i = 0; i < 4; i++) {
-    const text = document.querySelector(`#slot${i} .player-name`).textContent.trim();
-    if (text !== '— —') {
-      players.push(text);
-    }
+    const span = document.querySelector(`#slot${i} .player-name`);
+    const text = span ? span.textContent : EMPTY_SLOT;
+    players.push(text === EMPTY_SLOT ? null : text);
   }
   return players;
 }
 
+function isCourtOccupied() {
+  return getCourtPlayers().some((p) => p !== null);
+}
+
+function isNameInUse(name) {
+  const lower = name.toLowerCase();
+  const inQueue = waitingQueue.some((p) => p.toLowerCase() === lower);
+  const onCourt = getCourtPlayers().some((p) => p && p.toLowerCase() === lower);
+  return inQueue || onCourt;
+}
+
+function updateCourtButtons() {
+  const occupied = isCourtOccupied();
+  fillCourtBtn.disabled = occupied;
+  saveBtn.disabled = !occupied;
+  resetCourtBtn.disabled = !occupied;
+}
+
+/* ---------------------------------------------------------
+   Waiting queue
+--------------------------------------------------------- */
 function addPlayerToQueue() {
   const name = nameInput.value.trim();
   if (!name) return;
 
-  const currentCourt = getCourtPlayers();
-  const existsInQueue = waitingQueue.some(p => p.toLowerCase() === name.toLowerCase());
-  const existsOnCourt = currentCourt.some(p => p.toLowerCase() === name.toLowerCase());
-
-  if (existsInQueue || existsOnCourt) {
-    alert(`"${name}" is already in the queue or on the court!`);
+  if (isNameInUse(name)) {
+    showToast(`"${name}" is already in the queue or on the court`, true);
+    nameInput.classList.add('input-error');
     return;
   }
 
   waitingQueue.push(name);
   nameInput.value = '';
+  nameInput.classList.remove('input-error');
+  nameInput.focus();
+  renderQueue();
+}
+
+function removePlayerAt(index) {
+  waitingQueue.splice(index, 1);
   renderQueue();
 }
 
@@ -77,25 +133,20 @@ function removeLastPlayer() {
   if (waitingQueue.length > 0) {
     waitingQueue.pop();
     renderQueue();
+  } else {
+    showToast('Queue is already empty', true);
   }
 }
 
 function clearQueue() {
+  if (waitingQueue.length === 0) return;
+  if (!confirm('Clear the entire waiting queue?')) return;
   waitingQueue = [];
   renderQueue();
 }
 
-function renderQueue() {
-  queueList.innerHTML = '';
-  waitingQueue.forEach((player, index) => {
-    const li = document.createElement('li');
-    li.textContent = `${index + 1}. ${player}`;
-    queueList.appendChild(li);
-  });
-  queueCount.textContent = `${waitingQueue.length} player${waitingQueue.length !== 1 ? 's' : ''}`;
-}
-
 function shuffleQueue() {
+  if (waitingQueue.length < 2) return;
   for (let i = waitingQueue.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [waitingQueue[i], waitingQueue[j]] = [waitingQueue[j], waitingQueue[i]];
@@ -103,148 +154,229 @@ function shuffleQueue() {
   renderQueue();
 }
 
+function renderQueue() {
+  queueList.innerHTML = '';
+
+  if (waitingQueue.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No players waiting — add one above';
+    queueList.appendChild(empty);
+  } else {
+    waitingQueue.forEach((player, index) => {
+      const li = document.createElement('li');
+      li.className = 'queue-row';
+
+      const label = document.createElement('span');
+      label.textContent = `${index + 1}. ${player}`;
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'queue-del-btn';
+      delBtn.textContent = '\u00d7';
+      delBtn.setAttribute('aria-label', `Remove ${player}`);
+      delBtn.addEventListener('click', () => removePlayerAt(index));
+
+      li.appendChild(label);
+      li.appendChild(delBtn);
+      queueList.appendChild(li);
+    });
+  }
+
+  queueCount.textContent = `${waitingQueue.length} player${waitingQueue.length !== 1 ? 's' : ''}`;
+}
+
+/* ---------------------------------------------------------
+   Court
+--------------------------------------------------------- */
 function fillCourt() {
-  const activeCourt = getCourtPlayers();
-  if (activeCourt.length > 0) {
-    alert('The court is currently occupied! Reset or Save the current match before filling.');
+  if (isCourtOccupied()) {
+    showToast('Court already has players — save or reset the match first', true);
     return;
   }
 
   if (waitingQueue.length < 4) {
-    alert('You need at least 4 players in the waiting queue to fill the court!');
+    showToast(`Need ${4 - waitingQueue.length} more player(s) to fill the court`, true);
     return;
   }
 
   for (let i = 0; i < 4; i++) {
     const playerName = waitingQueue.shift();
-    const slot = document.getElementById(`slot${i}`);
-    slot.querySelector('.player-name').textContent = playerName;
+    document.querySelector(`#slot${i} .player-name`).textContent = playerName;
     document.getElementById(`score${i}`).textContent = '0';
   }
 
   renderQueue();
-  saveBtn.disabled = false;
+  updateCourtButtons();
 }
 
 function resetCourt() {
-  for (let i = 0; i < 4; i++) {
-    const slot = document.getElementById(`slot${i}`);
-    const nameSpan = slot.querySelector('.player-name');
-    
-    if (nameSpan.textContent !== '— —') {
+  if (!isCourtOccupied()) {
+    showToast('Court is already empty', true);
+    return;
+  }
+
+  // Walk slots back-to-front so unshift() restores the original slot order.
+  for (let i = 3; i >= 0; i--) {
+    const nameSpan = document.querySelector(`#slot${i} .player-name`);
+    if (nameSpan.textContent !== EMPTY_SLOT) {
       waitingQueue.unshift(nameSpan.textContent);
-      nameSpan.textContent = '— —';
+      nameSpan.textContent = EMPTY_SLOT;
     }
     document.getElementById(`score${i}`).textContent = '0';
   }
 
   renderQueue();
-  saveBtn.disabled = true;
+  updateCourtButtons();
 }
 
 function saveMatch() {
-  const p0 = document.querySelector('#slot0 .player-name').textContent;
-  const p1 = document.querySelector('#slot1 .player-name').textContent;
-  const p2 = document.querySelector('#slot2 .player-name').textContent;
-  const p3 = document.querySelector('#slot3 .player-name').textContent;
-
-  if (p0 === '— —' || p1 === '— —' || p2 === '— —' || p3 === '— —') {
-    alert('Please fill all court slots before saving the match.');
+  if (!isCourtOccupied()) {
+    showToast('No active match on the court', true);
     return;
   }
 
-  const s0 = parseInt(document.getElementById('score0').textContent, 10) || 0;
-  const s1 = parseInt(document.getElementById('score1').textContent, 10) || 0;
-  const s2 = parseInt(document.getElementById('score2').textContent, 10) || 0;
-  const s3 = parseInt(document.getElementById('score3').textContent, 10) || 0;
+  const players = getCourtPlayers();
+  if (players.some((p) => p === null)) {
+    showToast('Please fill all four court slots before saving', true);
+    return;
+  }
 
-  const team1Total = s0 + s1;
-  const team2Total = s2 + s3;
+  const scores = [0, 1, 2, 3].map(
+    (i) => parseInt(document.getElementById(`score${i}`).textContent, 10) || 0
+  );
+  const team1Total = scores[0] + scores[1];
+  const team2Total = scores[2] + scores[3];
 
   const matchRecord = {
-    p0: `${p0} (${s0})`,
-    p1: `${p1} (${s1})`,
-    p2: `${p2} (${s2})`,
-    p3: `${p3} (${s3})`,
+    players: players.map((name, i) => ({ name, score: scores[i] })),
     team1Total,
     team2Total,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
 
   matchHistory.unshift(matchRecord);
-  recentlyFinished = [p0, p1, p2, p3];
+  // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
+  recentlyFinished = recentlyFinished.concat(players);
 
   renderHistory();
   renderRecentlyFinished();
 
   for (let i = 0; i < 4; i++) {
-    document.querySelector(`#slot${i} .player-name`).textContent = '— —';
+    document.querySelector(`#slot${i} .player-name`).textContent = EMPTY_SLOT;
     document.getElementById(`score${i}`).textContent = '0';
   }
 
-  saveBtn.disabled = true;
+  updateCourtButtons();
+  showToast('Match saved!');
 }
 
+/* ---------------------------------------------------------
+   Recently finished
+--------------------------------------------------------- */
 function renderRecentlyFinished() {
   finishedContainer.innerHTML = '';
-  if (recentlyFinished.length === 0) return;
 
-  recentlyFinished.forEach(player => {
+  if (recentlyFinished.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No finished players yet';
+    finishedContainer.appendChild(empty);
+    return;
+  }
+
+  recentlyFinished.forEach((player, index) => {
     const row = document.createElement('div');
     row.className = 'requeue-row';
-    row.innerHTML = `
-      <span>${player}</span>
-      <button class="btn-primary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="requeuePlayer('${player}')">+ Requeue</button>
-    `;
+
+    const label = document.createElement('span');
+    label.textContent = player;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-primary small-btn';
+    btn.textContent = '+ Requeue';
+    btn.addEventListener('click', () => requeuePlayer(index));
+
+    row.appendChild(label);
+    row.appendChild(btn);
     finishedContainer.appendChild(row);
   });
 }
 
-function requeuePlayer(name) {
-  const currentCourt = getCourtPlayers();
-  const existsInQueue = waitingQueue.some(p => p.toLowerCase() === name.toLowerCase());
-  const existsOnCourt = currentCourt.some(p => p.toLowerCase() === name.toLowerCase());
+function requeuePlayer(index) {
+  const player = recentlyFinished[index];
+  if (!player) return;
 
-  if (existsInQueue || existsOnCourt) {
-    alert(`"${name}" is already back in the queue or on the court!`);
+  if (isNameInUse(player)) {
+    showToast(`"${player}" is already in the queue`, true);
     return;
   }
 
-  waitingQueue.push(name);
-  recentlyFinished = recentlyFinished.filter(p => p !== name);
+  recentlyFinished.splice(index, 1);
+  waitingQueue.push(player);
   renderQueue();
   renderRecentlyFinished();
 }
 
+/* ---------------------------------------------------------
+   Match history
+--------------------------------------------------------- */
 function renderHistory() {
   historyList.innerHTML = '';
+
+  if (matchHistory.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No matches played yet';
+    historyList.appendChild(empty);
+    return;
+  }
+
   matchHistory.forEach((match) => {
     const item = document.createElement('div');
     item.className = 'history-item';
-    
-    const team1Text = `${match.p0} & ${match.p1}`;
-    const team2Text = `${match.p2} & ${match.p3}`;
-    
-    let outcomeHTML = '';
-    if (match.team1Total > match.team2Total) {
-      outcomeHTML = `🏆 <b>${team1Text}</b> [${match.team1Total}] vs ${team2Text} [${match.team2Total}]`;
-    } else if (match.team2Total > match.team1Total) {
-      outcomeHTML = `${team1Text} [${match.team1Total}] vs 🏆 <b>${team2Text}</b> [${match.team2Total}]`;
-    } else {
-      outcomeHTML = `🤝 <b>TIE:</b> ${team1Text} [${match.team1Total}] vs ${team2Text} [${match.team2Total}]`;
-    }
-    
-    item.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <span>${outcomeHTML}</span>
-        <span style="color: #556b55; font-size: 0.72rem; font-weight: 600; margin-left: 8px;">${match.time}</span>
-      </div>
-    `;
+
+    const [p0, p1, p2, p3] = match.players;
+    const team1Text = `${p0.name} & ${p1.name}`;
+    const team2Text = `${p2.name} & ${p3.name}`;
+
+    let winner = null;
+    if (match.team1Total > match.team2Total) winner = 1;
+    else if (match.team2Total > match.team1Total) winner = 2;
+
+    const line = document.createElement('div');
+    line.className = 'history-line';
+
+    const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
+    const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
+    t1.textContent = `${team1Text} [${match.team1Total}]`;
+    const vs = document.createTextNode(' vs ');
+    const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
+    t2.textContent = `${team2Text} [${match.team2Total}]`;
+
+    line.appendChild(icon);
+    line.appendChild(t1);
+    line.appendChild(vs);
+    line.appendChild(t2);
+
+    const time = document.createElement('span');
+    time.className = 'history-time';
+    time.textContent = match.time;
+
+    const row = document.createElement('div');
+    row.className = 'history-row';
+    row.appendChild(line);
+    row.appendChild(time);
+
+    item.appendChild(row);
     historyList.appendChild(item);
   });
 }
 
 function clearHistory() {
+  if (matchHistory.length === 0) return;
+  if (!confirm('Clear match history?')) return;
   matchHistory = [];
   renderHistory();
 }
