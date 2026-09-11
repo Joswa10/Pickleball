@@ -3,8 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b5e20">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pickle Yang">
   <title>Pickle Yang</title>
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="style.css?v=6">
+  <script>
+    // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
+    // address bar shows/hides. This keeps the app frame sized to what's
+    // actually visible, with 100dvh in the CSS as the modern first choice.
+    function setViewportHeightVar() {
+      document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+    }
+    setViewportHeightVar();
+    window.addEventListener('resize', setViewportHeightVar);
+    window.addEventListener('orientationchange', setViewportHeightVar);
+  </script>
 </head>
 <body>
   <div class="app-frame">
@@ -21,12 +36,12 @@
           <span id="queueCount">0 players</span>
         </div>
         <div class="input-row">
-          <input type="text" id="nameInput" placeholder="Enter player name">
+          <input type="text" id="nameInput" placeholder="Enter player name" maxlength="24">
           <button id="addBtn" class="btn-primary">+ Add</button>
         </div>
         <ul id="queueList" class="scroll-list"></ul>
         <div class="action-row">
-          <button id="removeBtn" class="btn-danger-light">Remove</button>
+          <button id="removeBtn" class="btn-danger-light">Remove Last</button>
           <button id="clearQueueBtn" class="btn-danger">Clear Queue</button>
         </div>
       </section>
@@ -35,7 +50,7 @@
       <section class="card court-card">
         <h2>Court</h2>
         <div class="team-label">Team 1 (Top Side)</div>
-        
+
         <div class="court-visual">
           <div class="kitchen-zone"></div>
           <div class="court-net"></div>
@@ -85,7 +100,7 @@
       <section class="court-actions-bar">
         <button id="shuffleBtn" class="btn-secondary">Shuffle</button>
         <button id="fillCourtBtn" class="btn-primary">Fill Court</button>
-        <button id="resetCourtBtn" class="btn-warning">Reset Court</button>
+        <button id="resetCourtBtn" class="btn-warning" disabled>Reset Court</button>
       </section>
 
       <!-- Recently Finished Players -->
