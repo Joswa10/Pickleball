@@ -18,7 +18,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden; /* Prevents whole screen scrolling */
+  overflow: hidden;
   background-color: #121212;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   display: flex;
@@ -61,7 +61,7 @@ header p {
   gap: 8px;
   padding: 8px;
   flex: 1;
-  overflow: hidden; /* Strict height containment */
+  overflow: hidden;
 }
 
 .card {
@@ -125,7 +125,6 @@ input[type="text"] {
   font-size: 0.75rem;
 }
 
-/* Fixed Court Grid Visuals */
 .court-card {
   padding: 6px;
 }
@@ -250,7 +249,6 @@ button {
   font-size: 0.7rem;
 }
 
-/* Action bar above Recently Finished Players */
 .court-actions-bar {
   display: flex;
   gap: 6px;
