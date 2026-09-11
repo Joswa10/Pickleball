@@ -90,9 +90,16 @@ header p {
   color: #555;
 }
 
-.input-row, .action-row {
+.input-row {
   display: flex;
   gap: 6px;
+  margin-bottom: 6px;
+}
+
+.action-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
   margin-bottom: 4px;
 }
 
