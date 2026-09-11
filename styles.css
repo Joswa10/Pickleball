@@ -442,3 +442,52 @@ button:disabled:active {
 .toast-error {
   background: var(--danger-red);
 }
+
+/* ---------------------------------------------------------
+   Tablet / desktop layout (iPad and up) — the phone layout
+   above is untouched; this only kicks in on wider screens.
+--------------------------------------------------------- */
+@media (min-width: 700px) {
+  .app-frame {
+    max-width: 900px;
+    width: 92%;
+    height: 90dvh;
+    max-height: 940px;
+    border-radius: 22px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  }
+
+  header {
+    padding-top: 16px;
+    border-radius: 22px 22px 0 0;
+  }
+
+  header h1 {
+    font-size: 1.5rem;
+  }
+
+  .container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "queue court"
+      "actions actions"
+      "finished history";
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .container > section:nth-of-type(1) { grid-area: queue; }
+  .container > section:nth-of-type(2) { grid-area: court; }
+  .container > section:nth-of-type(3) { grid-area: actions; }
+  .container > section:nth-of-type(4) { grid-area: finished; }
+  .container > section:nth-of-type(5) { grid-area: history; }
+
+  .scroll-list {
+    max-height: 140px;
+  }
+
+  .court-visual {
+    height: 220px;
+  }
+}
