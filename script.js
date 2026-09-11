@@ -44,9 +44,29 @@ function adjustScore(slotIndex, delta) {
   scoreElement.textContent = currentScore;
 }
 
+function getCourtPlayers() {
+  const players = [];
+  for (let i = 0; i < 4; i++) {
+    const text = document.querySelector(`#slot${i} .player-name`).textContent.trim();
+    if (text !== '— —') {
+      players.push(text);
+    }
+  }
+  return players;
+}
+
 function addPlayerToQueue() {
   const name = nameInput.value.trim();
   if (!name) return;
+
+  const currentCourt = getCourtPlayers();
+  const existsInQueue = waitingQueue.some(p => p.toLowerCase() === name.toLowerCase());
+  const existsOnCourt = currentCourt.some(p => p.toLowerCase() === name.toLowerCase());
+
+  if (existsInQueue || existsOnCourt) {
+    alert(`"${name}" is already in the queue or on the court!`);
+    return;
+  }
 
   waitingQueue.push(name);
   nameInput.value = '';
@@ -84,6 +104,12 @@ function shuffleQueue() {
 }
 
 function fillCourt() {
+  const activeCourt = getCourtPlayers();
+  if (activeCourt.length > 0) {
+    alert('The court is currently occupied! Reset or Save the current match before filling.');
+    return;
+  }
+
   if (waitingQueue.length < 4) {
     alert('You need at least 4 players in the waiting queue to fill the court!');
     return;
@@ -175,6 +201,15 @@ function renderRecentlyFinished() {
 }
 
 function requeuePlayer(name) {
+  const currentCourt = getCourtPlayers();
+  const existsInQueue = waitingQueue.some(p => p.toLowerCase() === name.toLowerCase());
+  const existsOnCourt = currentCourt.some(p => p.toLowerCase() === name.toLowerCase());
+
+  if (existsInQueue || existsOnCourt) {
+    alert(`"${name}" is already back in the queue or on the court!`);
+    return;
+  }
+
   waitingQueue.push(name);
   recentlyFinished = recentlyFinished.filter(p => p !== name);
   renderQueue();
