@@ -351,7 +351,9 @@ function renderHistory() {
     const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
     const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
     t1.textContent = `${team1Text} [${match.team1Total}]`;
-    const vs = document.createTextNode(' vs ');
+    const vs = document.createElement('span');
+    vs.className = 'vs-label';
+    vs.textContent = ' VS ';
     const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
     t2.textContent = `${team2Text} [${match.team2Total}]`;
 
