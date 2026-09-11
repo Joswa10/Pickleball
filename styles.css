@@ -135,7 +135,7 @@ input[type="text"]::placeholder {
 }
 
 .scroll-list {
-  max-height: 55px;
+  max-height: 75px;
   overflow-y: auto;
   border: 1px solid var(--light-green);
   border-radius: 6px;
@@ -146,14 +146,14 @@ input[type="text"]::placeholder {
 }
 
 .scroll-list li, .history-item {
-  padding: 5px 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid #e0eee0;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-dark);
 }
 
-.scroll-list li:last-child {
+.scroll-list li:last-child, .history-item:last-child {
   border-bottom: none;
 }
 
