@@ -1,390 +1,444 @@
-const EMPTY_SLOT = '— —';
-
-let waitingQueue = [];
-let matchHistory = [];
-let recentlyFinished = [];
-
-const nameInput = document.getElementById('nameInput');
-const addBtn = document.getElementById('addBtn');
-const removeBtn = document.getElementById('removeBtn');
-const clearQueueBtn = document.getElementById('clearQueueBtn');
-const queueList = document.getElementById('queueList');
-const queueCount = document.getElementById('queueCount');
-
-const fillCourtBtn = document.getElementById('fillCourtBtn');
-const resetCourtBtn = document.getElementById('resetCourtBtn');
-const shuffleBtn = document.getElementById('shuffleBtn');
-const saveBtn = document.getElementById('saveBtn');
-
-const finishedContainer = document.getElementById('finishedContainer');
-const historyList = document.getElementById('historyList');
-const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-
-document.addEventListener('DOMContentLoaded', () => {
-  addBtn.addEventListener('click', addPlayerToQueue);
-  nameInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') addPlayerToQueue();
-  });
-  nameInput.addEventListener('input', () => nameInput.classList.remove('input-error'));
-
-  removeBtn.addEventListener('click', removeLastPlayer);
-  clearQueueBtn.addEventListener('click', clearQueue);
-
-  fillCourtBtn.addEventListener('click', fillCourt);
-  resetCourtBtn.addEventListener('click', resetCourt);
-  shuffleBtn.addEventListener('click', shuffleQueue);
-  saveBtn.addEventListener('click', saveMatch);
-
-  clearHistoryBtn.addEventListener('click', clearHistory);
-
-  renderQueue();
-  renderRecentlyFinished();
-  renderHistory();
-  updateCourtButtons();
-});
-
-/* ---------------------------------------------------------
-   Toast — small non-blocking notifications (mobile-friendly,
-   replaces jarring alert() popups)
---------------------------------------------------------- */
-let toastTimer = null;
-function showToast(message, isError = false) {
-  let toast = document.getElementById('toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast';
-    document.querySelector('.app-frame').appendChild(toast);
-  }
-  toast.textContent = message;
-  toast.className = 'toast show' + (isError ? ' toast-error' : '');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+:root {
+  --dark-green: #1b5e20;
+  --mid-green: #2e7d32;
+  --light-green: #a5d6a7;
+  --pale-green: #f1f8e9;
+  --court-blue: #1565c0;
+  --kitchen-blue: #42a5f5;
+  --text-dark: #1a251a;
+  --text-muted: #556b55;
+  --danger-red: #c62828;
+  --vh: 1vh;
 }
 
-/* ---------------------------------------------------------
-   Score controls
---------------------------------------------------------- */
-function adjustScore(slotIndex, delta) {
-  const scoreElement = document.getElementById(`score${slotIndex}`);
-  if (!scoreElement) return;
-
-  let currentScore = parseInt(scoreElement.textContent, 10) || 0;
-  currentScore = Math.max(0, currentScore + delta);
-  scoreElement.textContent = currentScore;
+* {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
 }
 
-/* ---------------------------------------------------------
-   Helpers shared across queue / court
---------------------------------------------------------- */
-function getCourtPlayers() {
-  const players = [];
-  for (let i = 0; i < 4; i++) {
-    const span = document.querySelector(`#slot${i} .player-name`);
-    const text = span ? span.textContent : EMPTY_SLOT;
-    players.push(text === EMPTY_SLOT ? null : text);
-  }
-  return players;
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  height: calc(var(--vh, 1vh) * 100);
+  height: 100dvh;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  overscroll-behavior: none;
+  background-color: #121212;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-dark);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-function isCourtOccupied() {
-  return getCourtPlayers().some((p) => p !== null);
+.app-frame {
+  position: relative;
+  width: 100%;
+  max-width: 414px;
+  height: 100%;
+  height: calc(var(--vh, 1vh) * 100);
+  height: 100dvh;
+  background-color: var(--pale-green);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-function isNameInUse(name) {
-  const lower = name.toLowerCase();
-  const inQueue = waitingQueue.some((p) => p.toLowerCase() === lower);
-  const onCourt = getCourtPlayers().some((p) => p && p.toLowerCase() === lower);
-  return inQueue || onCourt;
+header {
+  background-color: var(--dark-green);
+  color: #ffffff;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  text-align: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
 }
 
-function updateCourtButtons() {
-  const occupied = isCourtOccupied();
-  fillCourtBtn.disabled = occupied;
-  saveBtn.disabled = !occupied;
-  resetCourtBtn.disabled = !occupied;
+header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
-/* ---------------------------------------------------------
-   Waiting queue
---------------------------------------------------------- */
-function addPlayerToQueue() {
-  const name = nameInput.value.trim();
-  if (!name) return;
-
-  if (isNameInUse(name)) {
-    showToast(`"${name}" is already in the queue or on the court`, true);
-    nameInput.classList.add('input-error');
-    return;
-  }
-
-  waitingQueue.push(name);
-  nameInput.value = '';
-  nameInput.classList.remove('input-error');
-  nameInput.focus();
-  renderQueue();
+header p {
+  margin: 3px 0 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.9;
+  letter-spacing: 0.2px;
 }
 
-function removePlayerAt(index) {
-  waitingQueue.splice(index, 1);
-  renderQueue();
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
-function removeLastPlayer() {
-  if (waitingQueue.length > 0) {
-    waitingQueue.pop();
-    renderQueue();
-  } else {
-    showToast('Queue is already empty', true);
-  }
+.card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 
-function clearQueue() {
-  if (waitingQueue.length === 0) return;
-  if (!confirm('Clear the entire waiting queue?')) return;
-  waitingQueue = [];
-  renderQueue();
+.card h2 {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--dark-green);
+  letter-spacing: 0.2px;
 }
 
-function shuffleQueue() {
-  if (waitingQueue.length < 2) return;
-  for (let i = waitingQueue.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [waitingQueue[i], waitingQueue[j]] = [waitingQueue[j], waitingQueue[i]];
-  }
-  renderQueue();
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
-function renderQueue() {
-  queueList.innerHTML = '';
-
-  if (waitingQueue.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-hint';
-    empty.textContent = 'No players waiting — add one above';
-    queueList.appendChild(empty);
-  } else {
-    waitingQueue.forEach((player, index) => {
-      const li = document.createElement('li');
-      li.className = 'queue-row';
-
-      const label = document.createElement('span');
-      label.textContent = `${index + 1}. ${player}`;
-
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'queue-del-btn';
-      delBtn.textContent = '\u00d7';
-      delBtn.setAttribute('aria-label', `Remove ${player}`);
-      delBtn.addEventListener('click', () => removePlayerAt(index));
-
-      li.appendChild(label);
-      li.appendChild(delBtn);
-      queueList.appendChild(li);
-    });
-  }
-
-  queueCount.textContent = `${waitingQueue.length} player${waitingQueue.length !== 1 ? 's' : ''}`;
+.card-header span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
-/* ---------------------------------------------------------
-   Court
---------------------------------------------------------- */
-function fillCourt() {
-  if (isCourtOccupied()) {
-    showToast('Court already has players — save or reset the match first', true);
-    return;
-  }
-
-  if (waitingQueue.length < 4) {
-    showToast(`Need ${4 - waitingQueue.length} more player(s) to fill the court`, true);
-    return;
-  }
-
-  for (let i = 0; i < 4; i++) {
-    const playerName = waitingQueue.shift();
-    document.querySelector(`#slot${i} .player-name`).textContent = playerName;
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  renderQueue();
-  updateCourtButtons();
+.input-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
-function resetCourt() {
-  if (!isCourtOccupied()) {
-    showToast('Court is already empty', true);
-    return;
-  }
-
-  // Walk slots back-to-front so unshift() restores the original slot order.
-  for (let i = 3; i >= 0; i--) {
-    const nameSpan = document.querySelector(`#slot${i} .player-name`);
-    if (nameSpan.textContent !== EMPTY_SLOT) {
-      waitingQueue.unshift(nameSpan.textContent);
-      nameSpan.textContent = EMPTY_SLOT;
-    }
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  renderQueue();
-  updateCourtButtons();
+.action-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  margin-bottom: 2px;
 }
 
-function saveMatch() {
-  if (!isCourtOccupied()) {
-    showToast('No active match on the court', true);
-    return;
-  }
-
-  const players = getCourtPlayers();
-  if (players.some((p) => p === null)) {
-    showToast('Please fill all four court slots before saving', true);
-    return;
-  }
-
-  const scores = [0, 1, 2, 3].map(
-    (i) => parseInt(document.getElementById(`score${i}`).textContent, 10) || 0
-  );
-  const team1Total = scores[0] + scores[1];
-  const team2Total = scores[2] + scores[3];
-
-  const matchRecord = {
-    players: players.map((name, i) => ({ name, score: scores[i] })),
-    team1Total,
-    team2Total,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  };
-
-  matchHistory.unshift(matchRecord);
-  // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
-  recentlyFinished = recentlyFinished.concat(players);
-
-  renderHistory();
-  renderRecentlyFinished();
-
-  for (let i = 0; i < 4; i++) {
-    document.querySelector(`#slot${i} .player-name`).textContent = EMPTY_SLOT;
-    document.getElementById(`score${i}`).textContent = '0';
-  }
-
-  updateCourtButtons();
-  showToast('Match saved!');
+.action-row button {
+  flex: 1;
 }
 
-/* ---------------------------------------------------------
-   Recently finished
---------------------------------------------------------- */
-function renderRecentlyFinished() {
-  finishedContainer.innerHTML = '';
-
-  if (recentlyFinished.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-hint';
-    empty.textContent = 'No finished players yet';
-    finishedContainer.appendChild(empty);
-    return;
-  }
-
-  recentlyFinished.forEach((player, index) => {
-    const row = document.createElement('div');
-    row.className = 'requeue-row';
-
-    const label = document.createElement('span');
-    label.textContent = player;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-primary small-btn';
-    btn.textContent = '+ Requeue';
-    btn.addEventListener('click', () => requeuePlayer(index));
-
-    row.appendChild(label);
-    row.appendChild(btn);
-    finishedContainer.appendChild(row);
-  });
+input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1.5px solid var(--light-green);
+  border-radius: 6px;
+  font-size: 16px; /* Prevents auto-zoom on iOS focus */
+  font-weight: 500;
+  color: var(--text-dark);
+  outline: none;
+  transition: border-color 0.15s ease;
 }
 
-function requeuePlayer(index) {
-  const player = recentlyFinished[index];
-  if (!player) return;
-
-  if (isNameInUse(player)) {
-    showToast(`"${player}" is already in the queue`, true);
-    return;
-  }
-
-  recentlyFinished.splice(index, 1);
-  waitingQueue.push(player);
-  renderQueue();
-  renderRecentlyFinished();
+input[type="text"]::placeholder {
+  color: #889988;
 }
 
-/* ---------------------------------------------------------
-   Match history
---------------------------------------------------------- */
-function renderHistory() {
-  historyList.innerHTML = '';
-
-  if (matchHistory.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-hint';
-    empty.textContent = 'No matches played yet';
-    historyList.appendChild(empty);
-    return;
-  }
-
-  matchHistory.forEach((match) => {
-    const item = document.createElement('div');
-    item.className = 'history-item';
-
-    const [p0, p1, p2, p3] = match.players;
-
-    let winner = null;
-    if (match.team1Total > match.team2Total) winner = 1;
-    else if (match.team2Total > match.team1Total) winner = 2;
-
-    const line = document.createElement('div');
-    line.className = 'history-line';
-
-    const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
-
-    const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
-    t1.textContent = `${p0.name} (${p0.score})  ${p1.name} (${p1.score})`;
-
-    const vs = document.createElement('span');
-    vs.className = 'vs-label';
-    vs.textContent = ' VS ';
-
-    const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
-    t2.textContent = `${p2.name} (${p2.score})  ${p3.name} (${p3.score})`;
-
-    line.appendChild(icon);
-    line.appendChild(t1);
-    line.appendChild(vs);
-    line.appendChild(t2);
-
-    line.appendChild(icon);
-    line.appendChild(t1);
-    line.appendChild(vs);
-    line.appendChild(t2);
-
-    const time = document.createElement('span');
-    time.className = 'history-time';
-    time.textContent = match.time;
-
-    const row = document.createElement('div');
-    row.className = 'history-row';
-    row.appendChild(line);
-    row.appendChild(time);
-
-    item.appendChild(row);
-    historyList.appendChild(item);
-  });
+input[type="text"].input-error {
+  border-color: var(--danger-red);
+  animation: shake 0.35s;
 }
 
-function clearHistory() {
-  if (matchHistory.length === 0) return;
-  if (!confirm('Clear match history?')) return;
-  matchHistory = [];
-  renderHistory();
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.scroll-list {
+  max-height: 75px;
+  overflow-y: auto;
+  border: 1px solid var(--light-green);
+  border-radius: 6px;
+  background: #fbfdfb;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.scroll-list li, .history-item {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e0eee0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.scroll-list li:last-child, .history-item:last-child {
+  border-bottom: none;
+}
+
+.queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.queue-del-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: #ffebee;
+  color: var(--danger-red);
+  font-size: 0.85rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.empty-hint {
+  padding: 10px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.court-card {
+  padding: 8px;
+}
+
+.court-visual {
+  background: var(--court-blue);
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px;
+  padding: 6px;
+  border: 2px solid #ffffff;
+  border-radius: 6px;
+  height: 140px;
+}
+
+.kitchen-zone {
+  position: absolute;
+  top: 30%;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: var(--kitchen-blue);
+  pointer-events: none;
+}
+
+.court-net {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed #ffffff;
+  z-index: 2;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.slot {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1.5px solid var(--dark-green);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  padding: 2px 4px;
+}
+
+.player-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.score-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.score-val {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: var(--dark-green);
+  min-width: 16px;
+  text-align: center;
+  user-select: none;
+}
+
+.score-btn {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.score-minus {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.score-plus {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.team-label {
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--dark-green);
+  margin: 3px 0;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+button:active {
+  opacity: 0.85;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:disabled:active {
+  opacity: 0.45;
+}
+
+.full-width-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.small-btn {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+.court-actions-bar {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.court-actions-bar button {
+  flex: 1;
+}
+
+.btn-primary { background: var(--mid-green); color: #ffffff; }
+.btn-secondary { background: var(--mid-green); color: #ffffff; }
+.btn-danger { background: var(--danger-red); color: #ffffff; }
+.btn-danger-light { background: #ffcdd2; color: #880e4f; }
+.btn-warning { background: #ffe082; color: #4e342e; }
+
+.requeue-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+  padding: 5px 8px;
+  margin-bottom: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-line {
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.history-time {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.vs-label {
+  color: #f9a825;
+  font-weight: 800;
+}
+
+/* Toast notification (replaces alert() popups on mobile) */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translate(-50%, 20px);
+  max-width: 90%;
+  background: var(--dark-green);
+  color: #ffffff;
+  padding: 9px 16px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast-error {
+  background: var(--danger-red);
 }
