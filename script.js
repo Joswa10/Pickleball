@@ -33,6 +33,8 @@ const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const team1Label = document.getElementById('team1Label');
 const team2Label = document.getElementById('team2Label');
 
+const connectionBanner = document.getElementById('connectionBanner');
+
 /* ===========================================================
    MULTIPLAYER: Firebase config + Host/Viewer setup
    -----------------------------------------------------------
@@ -95,6 +97,67 @@ function generateRoomId(length = 6) {
   return id;
 }
 
+/* ---------------------------------------------------------
+   MULTIPLAYER: connection watchdog
+   -----------------------------------------------------------
+   The live `.on('value', ...)` listener depends on an open
+   WebSocket. Backgrounding a tab, letting the phone sleep, or
+   Safari restoring a tab from its back-forward cache (bfcache)
+   can silently kill that socket — the page never errors, it
+   just stops receiving updates and freezes on whatever it last
+   saw. A manual refresh doesn't reliably fix this either, since
+   a bfcache restore can skip re-running this script entirely.
+
+   forceResync() does a one-time fetch of the current room state
+   and applies it immediately, regardless of whether the live
+   listener is still healthy. It's called:
+     1) whenever Firebase's own connection-state ref flips back
+        to "connected" (covers real network drops/reconnects)
+     2) on `pageshow` with event.persisted === true (covers
+        Safari/bfcache tab restores)
+     3) whenever the tab becomes visible again (belt-and-
+        suspenders for platforms that don't fire the above)
+--------------------------------------------------------- */
+function forceResync() {
+  if (!roomRef) return;
+  roomRef
+    .once('value')
+    .then((snapshot) => {
+      const data = snapshot.val();
+      if (data) applyState(data);
+    })
+    .catch((err) => {
+      console.error('Resync failed:', err);
+    });
+}
+
+function setupConnectionWatchdog() {
+  // Firebase's built-in "am I connected right now" signal. Fires true on
+  // initial connect AND on every reconnect after a drop — that second case
+  // is exactly when a stale screen needs a hard refresh of the data.
+  firebase
+    .database()
+    .ref('.info/connected')
+    .on('value', (snap) => {
+      const connected = snap.val() === true;
+      if (connectionBanner) connectionBanner.hidden = connected;
+      if (connected) forceResync();
+    });
+
+  // Safari (and some other browsers) can restore a tab from bfcache
+  // without re-running this script or re-opening the socket. `pageshow`
+  // with `persisted: true` is the signal that this just happened.
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) forceResync();
+  });
+
+  // Extra safety net: re-sync whenever the tab regains visibility, in case
+  // the above two signals don't fire on a given platform.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') forceResync();
+  });
+}
+
 function initMultiplayer() {
   if (isHost) {
     if (!roomId) {
@@ -108,13 +171,10 @@ function initMultiplayer() {
     roomRef = db.ref(`rooms/${roomId}`);
     renderRoomBar();
 
-    // FIX: read the room's existing data ONCE, first, and only decide what
-    // to do once that finishes. Previously the live 'on' listener and a
-    // one-time "does this room exist yet?" check both fired at the same
-    // time, racing each other — on a refresh, the seed-for-a-new-room write
-    // could land before (or instead of) the real saved data got applied,
-    // wiping Match History / Recently Finished and resetting the match
-    // timer's start time. Reading first removes that race entirely.
+    // Read the room's existing data ONCE, first, and only decide what to
+    // do once that finishes. This avoids a race between the live 'on'
+    // listener and the one-time "does this room exist yet?" check, which
+    // could otherwise wipe Match History / Recently Finished on refresh.
     roomRef
       .once('value')
       .then((snapshot) => {
@@ -138,6 +198,8 @@ function initMultiplayer() {
             showToast('Lost connection to the room — check Firebase rules/network', true);
           }
         );
+
+        setupConnectionWatchdog();
       })
       .catch((err) => {
         console.error('Failed to load room from Firebase:', err);
@@ -168,6 +230,8 @@ function initMultiplayer() {
         showToast('Could not connect to this room — check the link', true);
       }
     );
+
+    setupConnectionWatchdog();
   }
 }
 
@@ -228,7 +292,9 @@ function syncStateToFirebase() {
 }
 
 // FIREBASE -> UI: rebuilds local state + re-renders from a Firebase
-// snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes.
+// snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes,
+// and also whenever forceResync() pulls a fresh snapshot after a
+// reconnect/tab-restore.
 function applyState(state) {
   waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
 
