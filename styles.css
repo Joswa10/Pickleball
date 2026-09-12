@@ -625,6 +625,20 @@ button:disabled:active {
 .btn-danger { background: var(--danger-red); color: #ffffff; }
 .btn-danger-light { background: #ffcdd2; color: #880e4f; }
 .btn-warning { background: #ffe082; color: #4e342e; }
+.btn-play { background: #ef6c00; color: #ffffff; }
+
+/* ---------------------------------------------------------
+   Match timer — shown above the SAVE button once PLAY has
+   been pressed; ticks live and is visible to viewers too.
+--------------------------------------------------------- */
+.match-timer {
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--dark-green);
+  margin: 2px 0 4px;
+  letter-spacing: 0.4px;
+}
 
 .requeue-row {
   display: flex;
