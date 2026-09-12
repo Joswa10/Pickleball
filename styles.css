@@ -52,12 +52,37 @@ html, body {
 }
 
 header {
+  position: relative;
   background-color: var(--dark-green);
   color: #ffffff;
   padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
   text-align: center;
   flex-shrink: 0;
   box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+}
+
+/* ---------------------------------------------------------
+   MULTIPLAYER: mini QR toggle icon (Host only) — sits in the
+   header's top-right corner; tapping it opens the QR modal.
+--------------------------------------------------------- */
+.qr-toggle-btn {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-toggle-btn:active {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 header h1 {
@@ -119,16 +144,54 @@ header p {
 }
 
 /* ---------------------------------------------------------
-   MULTIPLAYER: Room card (Host) — QR code + room code +
-   copy-link button, shown at the top of the app.
+   MULTIPLAYER: QR modal (Host) — white popup with the QR
+   code, room code, and copy-link button. Opened via the
+   mini icon in the header; closed via × or an outside click.
 --------------------------------------------------------- */
-.room-card {
+.qr-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 30, 28, 0.55);
+  display: flex;
   align-items: center;
-  text-align: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 60;
 }
 
-.room-card-header h2 {
-  margin-bottom: 2px;
+.qr-modal {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 22px 18px 18px;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.qr-modal h2 {
+  margin: 0 0 2px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--dark-green);
+}
+
+.qr-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  background: #eaf4f2;
+  color: var(--text-dark);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .qrcode-container {
@@ -707,7 +770,6 @@ body.viewer-mode #clearHistoryBtn {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
-      "room room"
       "viewer viewer"
       "queue court"
       "actions actions"
@@ -716,13 +778,12 @@ body.viewer-mode #clearHistoryBtn {
     padding: 16px;
   }
 
-  .room-card { grid-area: room; }
   .viewer-badge { grid-area: viewer; }
-  .container > section:nth-of-type(2) { grid-area: queue; }
-  .container > section:nth-of-type(3) { grid-area: court; }
-  .container > section:nth-of-type(4) { grid-area: actions; }
-  .container > section:nth-of-type(5) { grid-area: finished; }
-  .container > section:nth-of-type(6) { grid-area: history; }
+  .container > section:nth-of-type(1) { grid-area: queue; }
+  .container > section:nth-of-type(2) { grid-area: court; }
+  .container > section:nth-of-type(3) { grid-area: actions; }
+  .container > section:nth-of-type(4) { grid-area: finished; }
+  .container > section:nth-of-type(5) { grid-area: history; }
 
   .scroll-list {
     max-height: 140px;
