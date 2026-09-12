@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -29,6 +29,26 @@
     </header>
 
     <main class="container">
+
+      <!-- ============================================================
+           MULTIPLAYER: Room card (Host only) — shows the QR code that
+           spectators scan to open Viewer mode. Hidden by default;
+           script.js reveals this OR the viewer badge below, never both.
+      ============================================================= -->
+      <section class="card room-card" id="roomCard" hidden>
+        <div class="room-card-header">
+          <h2>Spectator Link</h2>
+        </div>
+        <div id="qrcodeContainer" class="qrcode-container"></div>
+        <p class="room-code-text">Room Code: <strong id="roomCodeText"></strong></p>
+        <button type="button" id="copyLinkBtn" class="btn-secondary small-btn copy-link-btn">Copy Viewer Link</button>
+      </section>
+
+      <!-- MULTIPLAYER: Viewer badge (Viewer mode only) -->
+      <div id="viewerBadge" class="viewer-badge" hidden>
+        🔴 Live View — Room <span id="viewerRoomCode"></span>
+      </div>
+
       <!-- Waiting Queue -->
       <section class="card">
         <div class="card-header">
@@ -137,6 +157,20 @@
     </main>
   </div>
 
-  <script src="script.js?v=13"></script>
+  <!-- ==============================================================
+       MULTIPLAYER: External libraries — load BEFORE script.js.
+
+       1) Firebase compat SDKs (App + Realtime Database). The "compat"
+          build is used so no bundler/ES-modules setup is needed on
+          GitHub Pages — everything hangs off the global `firebase`
+          object, same as the old <script>-tag Firebase examples.
+       2) QRCode.js (davidshimjs) — renders the spectator QR code
+          into #qrcodeContainer via `new QRCode(el, { text, ... })`.
+  =============================================================== -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script src="script.js?v=14"></script>
 </body>
 </html>
