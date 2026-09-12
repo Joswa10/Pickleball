@@ -342,6 +342,11 @@ function syncStateToFirebase() {
       // rather than an implicit absence that every reader has to guess
       // the meaning of.
       matchStartTime: matchStartTime ?? 0,
+      // Human-readable mirror of matchStartTime, purely for glancing at
+      // the Firebase console / debug log — applyState() below still
+      // derives real behavior from matchStartTime and courtPlayers, not
+      // this string, since those are the actual source of truth.
+      matchStatus: matchStartTime !== null ? 'in_progress' : 'idle',
       scores: getCurrentScores(),
       matchHistory,
       recentlyFinished,
@@ -379,6 +384,15 @@ function syncStateToFirebase() {
 // tab on the same room, or a listener catching up after being throttled)
 // could silently overwrite a fresh save/reset with old data.
 function applyState(state) {
+  // DEBUG: confirms whether this client (host or viewer) is actually
+  // receiving Firebase snapshots at all, and what they contain. If a
+  // Save on the host never logs anything on the viewer's console, the
+  // problem is upstream of this function entirely (deploy not live yet,
+  // Firebase rules rejecting the write, or the listener never attached)
+  // rather than anything in the state-application logic below. Safe to
+  // remove once things are confirmed working.
+  console.log('Firebase snapshot received:', state);
+
   const incomingRevision = typeof state.revision === 'number' ? state.revision : 0;
   if (incomingRevision < lastAppliedRevision) {
     console.warn(
