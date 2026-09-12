@@ -29,6 +29,177 @@ const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const team1Label = document.getElementById('team1Label');
 const team2Label = document.getElementById('team2Label');
 
+/* ===========================================================
+   MULTIPLAYER: Firebase config + Host/Viewer setup
+   -----------------------------------------------------------
+   Replace the placeholder values below with the config object
+   from your Firebase project (Project settings → General →
+   "Your apps" → SDK setup and configuration → Config).
+=========================================================== */
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const roomCard = document.getElementById('roomCard');
+const qrcodeContainer = document.getElementById('qrcodeContainer');
+const roomCodeText = document.getElementById('roomCodeText');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+const viewerBadge = document.getElementById('viewerBadge');
+const viewerRoomCode = document.getElementById('viewerRoomCode');
+
+const urlParams = new URLSearchParams(window.location.search);
+const isViewerMode = urlParams.get('mode') === 'viewer';
+const isHost = !isViewerMode;
+let roomId = urlParams.get('room');
+let roomRef = null;
+
+// Applied immediately (script runs after the body has parsed) so
+// spectator controls are hidden before the first paint, not after.
+if (isViewerMode) {
+  document.body.classList.add('viewer-mode');
+}
+
+function generateRoomId(length = 6) {
+  // Avoids ambiguous characters (0/O, 1/I) so codes are easy to read/type.
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+
+function initMultiplayer() {
+  if (isHost) {
+    if (!roomId) {
+      roomId = generateRoomId();
+      // Keep the room id in the URL so refreshing the host page resumes
+      // the same room instead of spinning up a brand new one.
+      const newUrl = `${window.location.pathname}?room=${roomId}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+
+    roomRef = db.ref(`rooms/${roomId}`);
+
+    // Any change under rooms/{roomId} (including the host's own writes)
+    // re-renders the UI from the authoritative Firebase copy.
+    roomRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) applyState(data);
+    });
+
+    renderRoomBar();
+    syncStateToFirebase(); // seed the room immediately so the QR/viewer isn't blank
+  } else {
+    if (!roomId) {
+      showToast('No room code in this link', true);
+      return;
+    }
+
+    viewerRoomCode.textContent = roomId;
+    viewerBadge.hidden = false;
+
+    roomRef = db.ref(`rooms/${roomId}`);
+    roomRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        applyState(data);
+      } else {
+        showToast('Waiting for the host to start the session…');
+      }
+    });
+  }
+}
+
+function renderRoomBar() {
+  roomCard.hidden = false;
+  roomCodeText.textContent = roomId;
+
+  const viewerUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&mode=viewer`;
+
+  qrcodeContainer.innerHTML = '';
+  // eslint-disable-next-line no-undef
+  new QRCode(qrcodeContainer, {
+    text: viewerUrl,
+    width: 128,
+    height: 128,
+    colorDark: '#1c2e2a',
+    colorLight: '#ffffff',
+  });
+
+  copyLinkBtn.addEventListener('click', () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(viewerUrl)
+        .then(() => showToast('Viewer link copied!'))
+        .catch(() => showToast('Could not copy link', true));
+    } else {
+      showToast('Copy not supported on this browser', true);
+    }
+  });
+}
+
+// Pulls the four on-screen scores into a plain array for syncing —
+// scores live only in the score-val spans, not in courtPlayers.
+function getCurrentScores() {
+  return [0, 1, 2, 3].map(
+    (i) => parseInt(document.getElementById(`score${i}`).textContent, 10) || 0
+  );
+}
+
+// HOST -> FIREBASE: pushes the entire app state to rooms/{roomId}.
+// Called at the end of every action that mutates state.
+function syncStateToFirebase() {
+  if (!isHost || !roomRef) return;
+  roomRef
+    .set({
+      waitingQueue,
+      courtPlayers,
+      scores: getCurrentScores(),
+      matchHistory,
+      recentlyFinished,
+      updatedAt: Date.now(),
+    })
+    .catch((err) => {
+      console.error('Firebase sync failed:', err);
+      showToast('Could not sync to viewers — check Firebase config', true);
+    });
+}
+
+// FIREBASE -> UI: rebuilds local state + re-renders from a Firebase
+// snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes.
+function applyState(state) {
+  waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
+
+  courtPlayers = Array.isArray(state.courtPlayers) ? state.courtPlayers.slice(0, 4) : [];
+  while (courtPlayers.length < 4) courtPlayers.push(null);
+
+  matchHistory = Array.isArray(state.matchHistory) ? state.matchHistory : [];
+  recentlyFinished = Array.isArray(state.recentlyFinished) ? state.recentlyFinished : [];
+
+  renderQueue();
+  renderCourt();
+
+  const scores = Array.isArray(state.scores) ? state.scores : [0, 0, 0, 0];
+  for (let i = 0; i < 4; i++) {
+    document.getElementById(`score${i}`).textContent = scores[i] || 0;
+  }
+
+  renderRecentlyFinished();
+  renderHistory();
+  updateCourtButtons();
+  updateTeamLabels();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   addBtn.addEventListener('click', addPlayerToQueue);
   nameInput.addEventListener('keypress', (e) => {
@@ -54,6 +225,9 @@ document.addEventListener('DOMContentLoaded', () => {
   renderHistory();
   updateCourtButtons();
   updateTeamLabels();
+
+  // MULTIPLAYER: set up Host (QR + writes) or Viewer (read-only listener).
+  initMultiplayer();
 });
 
 /* ---------------------------------------------------------
@@ -123,6 +297,8 @@ function createAvatarElement(player, className) {
    Score controls
 --------------------------------------------------------- */
 function adjustScore(slotIndex, delta) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   const scoreElement = document.getElementById(`score${slotIndex}`);
   if (!scoreElement) return;
 
@@ -130,6 +306,7 @@ function adjustScore(slotIndex, delta) {
   currentScore = Math.max(0, currentScore + delta);
   scoreElement.textContent = currentScore;
   updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function updateTeamLabels() {
@@ -167,6 +344,8 @@ function updateCourtButtons() {
    Waiting queue
 --------------------------------------------------------- */
 function addPlayerToQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   const name = nameInput.value.trim();
   if (!name) return;
 
@@ -182,36 +361,49 @@ function addPlayerToQueue() {
   resetPhotoPicker();
   nameInput.focus();
   renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function removePlayerAt(index) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   waitingQueue.splice(index, 1);
   renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function removeLastPlayer() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (waitingQueue.length > 0) {
     waitingQueue.pop();
     renderQueue();
+    syncStateToFirebase(); // MULTIPLAYER
   } else {
     showToast('Queue is already empty', true);
   }
 }
 
 function clearQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (waitingQueue.length === 0) return;
   if (!confirm('Clear the entire waiting queue?')) return;
   waitingQueue = [];
   renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function shuffleQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (waitingQueue.length < 2) return;
   for (let i = waitingQueue.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [waitingQueue[i], waitingQueue[j]] = [waitingQueue[j], waitingQueue[i]];
   }
   renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function renderQueue() {
@@ -277,6 +469,8 @@ function renderCourt() {
 }
 
 function fillCourt() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (isCourtOccupied()) {
     showToast('Court already has players — save or reset the match first', true);
     return;
@@ -295,9 +489,12 @@ function fillCourt() {
   renderQueue();
   updateCourtButtons();
   updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function resetCourt() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (!isCourtOccupied()) {
     showToast('Court is already empty', true);
     return;
@@ -316,9 +513,12 @@ function resetCourt() {
   renderQueue();
   updateCourtButtons();
   updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 function saveMatch() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (!isCourtOccupied()) {
     showToast('No active match on the court', true);
     return;
@@ -360,6 +560,7 @@ function saveMatch() {
   updateCourtButtons();
   updateTeamLabels();
   showToast('Match saved!');
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 /* ---------------------------------------------------------
@@ -401,6 +602,8 @@ function renderRecentlyFinished() {
 }
 
 function requeuePlayer(index) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   const player = recentlyFinished[index];
   if (!player) return;
 
@@ -413,6 +616,7 @@ function requeuePlayer(index) {
   waitingQueue.push(player);
   renderQueue();
   renderRecentlyFinished();
+  syncStateToFirebase(); // MULTIPLAYER
 }
 
 /* ---------------------------------------------------------
@@ -484,8 +688,11 @@ function renderHistory() {
 }
 
 function clearHistory() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
   if (matchHistory.length === 0) return;
   if (!confirm('Clear match history?')) return;
   matchHistory = [];
   renderHistory();
+  syncStateToFirebase(); // MULTIPLAYER
 }
