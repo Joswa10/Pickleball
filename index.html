@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=11">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -36,6 +36,11 @@
           <span id="queueCount">0 players</span>
         </div>
         <div class="input-row">
+          <label class="photo-picker" id="photoPickerLabel" for="photoInput">
+            <img id="photoPreview" class="photo-preview" alt="">
+            <span id="photoPickerIcon" class="photo-picker-icon">📷</span>
+            <input type="file" id="photoInput" accept="image/*" hidden>
+          </label>
           <input type="text" id="nameInput" placeholder="Enter player name" maxlength="24">
           <button id="addBtn" class="btn-primary">+ Add</button>
         </div>
@@ -56,7 +61,10 @@
           <div class="court-net"></div>
 
           <div class="slot" id="slot0">
-            <span class="player-name">— —</span>
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
             <div class="score-control">
               <button class="score-btn score-minus" onclick="adjustScore(0, -1)">-</button>
               <span class="score-val" id="score0">0</span>
@@ -65,7 +73,10 @@
           </div>
 
           <div class="slot" id="slot1">
-            <span class="player-name">— —</span>
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
             <div class="score-control">
               <button class="score-btn score-minus" onclick="adjustScore(1, -1)">-</button>
               <span class="score-val" id="score1">0</span>
@@ -74,7 +85,10 @@
           </div>
 
           <div class="slot" id="slot2">
-            <span class="player-name">— —</span>
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
             <div class="score-control">
               <button class="score-btn score-minus" onclick="adjustScore(2, -1)">-</button>
               <span class="score-val" id="score2">0</span>
@@ -83,7 +97,10 @@
           </div>
 
           <div class="slot" id="slot3">
-            <span class="player-name">— —</span>
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
             <div class="score-control">
               <button class="score-btn score-minus" onclick="adjustScore(3, -1)">-</button>
               <span class="score-val" id="score3">0</span>
@@ -120,6 +137,6 @@
     </main>
   </div>
 
-  <script src="script.js?v=12"></script>
+  <script src="script.js?v=13"></script>
 </body>
 </html>
