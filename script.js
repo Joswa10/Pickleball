@@ -308,7 +308,12 @@ function syncStateToFirebase() {
     })
     .catch((err) => {
       console.error('Firebase sync failed:', err);
-      showToast('Could not sync to viewers — check Firebase config', true);
+      // Surface the actual reason (e.g. "PERMISSION_DENIED" from expired
+      // test-mode database rules) instead of a generic message — this is
+      // exactly the kind of failure that otherwise looks like "nothing's
+      // wrong" on the host while nothing actually saves to viewers.
+      const reason = err && (err.code || err.message) ? ` (${err.code || err.message})` : '';
+      showToast(`Save failed — not synced to viewers${reason}`, true);
     });
 }
 
@@ -415,7 +420,9 @@ function showToast(message, isError = false) {
   toast.textContent = message;
   toast.className = 'toast show' + (isError ? ' toast-error' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+  // Errors stay up longer (4.5s vs 2.2s) — a sync failure is easy to miss
+  // otherwise, and missing it is exactly how this class of bug goes unnoticed.
+  toastTimer = setTimeout(() => toast.classList.remove('show'), isError ? 4500 : 2200);
 }
 
 /* ---------------------------------------------------------
