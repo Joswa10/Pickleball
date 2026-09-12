@@ -49,12 +49,25 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const roomCard = document.getElementById('roomCard');
+const qrToggleBtn = document.getElementById('qrToggleBtn');
+const qrModalOverlay = document.getElementById('qrModalOverlay');
+const qrModalCloseBtn = document.getElementById('qrModalCloseBtn');
 const qrcodeContainer = document.getElementById('qrcodeContainer');
 const roomCodeText = document.getElementById('roomCodeText');
 const copyLinkBtn = document.getElementById('copyLinkBtn');
 const viewerBadge = document.getElementById('viewerBadge');
 const viewerRoomCode = document.getElementById('viewerRoomCode');
+
+// MULTIPLAYER: open/close the QR modal from the header icon.
+qrToggleBtn.addEventListener('click', () => {
+  qrModalOverlay.hidden = false;
+});
+qrModalCloseBtn.addEventListener('click', () => {
+  qrModalOverlay.hidden = true;
+});
+qrModalOverlay.addEventListener('click', (e) => {
+  if (e.target === qrModalOverlay) qrModalOverlay.hidden = true; // click outside the card
+});
 
 const urlParams = new URLSearchParams(window.location.search);
 const isViewerMode = urlParams.get('mode') === 'viewer';
@@ -121,7 +134,7 @@ function initMultiplayer() {
 }
 
 function renderRoomBar() {
-  roomCard.hidden = false;
+  qrToggleBtn.hidden = false;
   roomCodeText.textContent = roomId;
 
   const viewerUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&mode=viewer`;
