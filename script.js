@@ -37,13 +37,13 @@ const team2Label = document.getElementById('team2Label');
    "Your apps" → SDK setup and configuration → Config).
 =========================================================== */
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyBdSMWpqMTYbiRcTzkOZjRC9ue2Ta9zrao",
+  authDomain: "pickle-resjam.firebaseapp.com",
+  databaseURL: "https://pickle-resjam-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pickle-resjam",
+  storageBucket: "pickle-resjam.firebasestorage.app",
+  messagingSenderId: "712164613268",
+  appId: "1:712164613268:web:04cf91dfbcee46ab936881",
 };
 
 firebase.initializeApp(firebaseConfig);
