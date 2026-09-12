@@ -5,6 +5,8 @@ let courtPlayers = [null, null, null, null]; // each null or { name, photo }
 let matchHistory = [];       // array of { players:[{name,score,photo} x4], team1Total, team2Total, time }
 let recentlyFinished = [];   // array of { name, photo }
 let pendingPhoto = null;     // data URL for the photo about to be added
+let matchStartTime = null;   // timestamp (ms) the current match's timer started, or null if not running
+let matchTimerInterval = null; // setInterval handle for the live ticking display
 
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
@@ -21,6 +23,8 @@ const fillCourtBtn = document.getElementById('fillCourtBtn');
 const resetCourtBtn = document.getElementById('resetCourtBtn');
 const shuffleBtn = document.getElementById('shuffleBtn');
 const saveBtn = document.getElementById('saveBtn');
+const playBtn = document.getElementById('playBtn');
+const matchTimerDisplay = document.getElementById('matchTimer');
 
 const finishedContainer = document.getElementById('finishedContainer');
 const historyList = document.getElementById('historyList');
@@ -190,6 +194,7 @@ function syncStateToFirebase() {
       scores: getCurrentScores(),
       matchHistory,
       recentlyFinished,
+      matchStartTime,
       updatedAt: Date.now(),
     })
     .catch((err) => {
@@ -219,6 +224,19 @@ function applyState(state) {
 
   renderRecentlyFinished();
   renderHistory();
+
+  // Match timer: derived from a shared timestamp so it stays correct across
+  // refreshes and shows the same live count for the host and any viewers.
+  matchStartTime = typeof state.matchStartTime === 'number' ? state.matchStartTime : null;
+  if (matchStartTime !== null) {
+    matchTimerDisplay.hidden = false;
+    startTimerInterval();
+  } else {
+    matchTimerDisplay.hidden = true;
+    matchTimerDisplay.textContent = '⏱ 00:00';
+    stopTimerInterval();
+  }
+
   updateCourtButtons();
   updateTeamLabels();
 }
@@ -239,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   resetCourtBtn.addEventListener('click', resetCourt);
   shuffleBtn.addEventListener('click', shuffleQueue);
   saveBtn.addEventListener('click', saveMatch);
+  playBtn.addEventListener('click', startMatch);
 
   clearHistoryBtn.addEventListener('click', clearHistory);
 
@@ -317,10 +336,57 @@ function createAvatarElement(player, className) {
 }
 
 /* ---------------------------------------------------------
+   Match timer — starts when PLAY is pressed, ticks live, and
+   its start timestamp is synced through Firebase so a page
+   refresh (host or viewer) resumes the correct elapsed time
+   instead of restarting from zero.
+--------------------------------------------------------- */
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function startTimerInterval() {
+  stopTimerInterval();
+  const tick = () => {
+    if (matchStartTime === null) return;
+    matchTimerDisplay.textContent = `⏱ ${formatDuration(Date.now() - matchStartTime)}`;
+  };
+  tick();
+  matchTimerInterval = setInterval(tick, 1000);
+}
+
+function stopTimerInterval() {
+  if (matchTimerInterval) {
+    clearInterval(matchTimerInterval);
+    matchTimerInterval = null;
+  }
+}
+
+function startMatch() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (!isCourtOccupied()) {
+    showToast('Fill the court before starting the match', true);
+    return;
+  }
+  if (matchStartTime !== null) return; // already running
+
+  matchStartTime = Date.now();
+  matchTimerDisplay.hidden = false;
+  startTimerInterval();
+  updateCourtButtons();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+/* ---------------------------------------------------------
    Score controls
 --------------------------------------------------------- */
 function adjustScore(slotIndex, delta) {
   if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+  if (!courtPlayers[slotIndex]) return; // no player in this slot yet — nothing to score
 
   const scoreElement = document.getElementById(`score${slotIndex}`);
   if (!scoreElement) return;
@@ -361,6 +427,20 @@ function updateCourtButtons() {
   fillCourtBtn.disabled = occupied;
   saveBtn.disabled = !occupied;
   resetCourtBtn.disabled = !occupied;
+  playBtn.disabled = !occupied || matchStartTime !== null;
+  updateScoreButtonsLocked();
+}
+
+// Disables the +/- buttons for any slot that doesn't have a player yet,
+// so scores can't be bumped before someone is actually standing there.
+function updateScoreButtonsLocked() {
+  for (let i = 0; i < 4; i++) {
+    const hasPlayer = !!courtPlayers[i];
+    const minusBtn = document.querySelector(`#slot${i} .score-minus`);
+    const plusBtn = document.querySelector(`#slot${i} .score-plus`);
+    if (minusBtn) minusBtn.disabled = !hasPlayer;
+    if (plusBtn) plusBtn.disabled = !hasPlayer;
+  }
 }
 
 /* ---------------------------------------------------------
@@ -508,6 +588,12 @@ function fillCourt() {
     courtPlayers[i] = waitingQueue.shift();
   }
 
+  // Safety net: a fresh court should never inherit a running timer.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
+
   renderCourt();
   renderQueue();
   updateCourtButtons();
@@ -531,6 +617,12 @@ function resetCourt() {
     }
     document.getElementById(`score${i}`).textContent = '0';
   }
+
+  // Abandoning the match without saving — clear the timer too.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
 
   renderCourt();
   renderQueue();
@@ -558,11 +650,16 @@ function saveMatch() {
   const team1Total = scores[0] + scores[1];
   const team2Total = scores[2] + scores[3];
 
+  // Duration is only meaningful if PLAY was actually pressed; otherwise
+  // there's nothing to clock, so it's omitted from the record.
+  const duration = matchStartTime !== null ? formatDuration(Date.now() - matchStartTime) : null;
+
   const matchRecord = {
     players: courtPlayers.map((p, i) => ({ name: p.name, photo: p.photo, score: scores[i] })),
     team1Total,
     team2Total,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    duration,
   };
 
   matchHistory.unshift(matchRecord);
@@ -578,6 +675,12 @@ function saveMatch() {
   for (let i = 0; i < 4; i++) {
     document.getElementById(`score${i}`).textContent = '0';
   }
+
+  // Match is over — clear the timer for the next one.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
 
   renderCourt();
   updateCourtButtons();
@@ -702,7 +805,7 @@ function renderHistory() {
 
     const time = document.createElement('div');
     time.className = 'history-time';
-    time.textContent = match.time;
+    time.textContent = match.duration ? `${match.time} · ${match.duration}` : match.time;
 
     item.appendChild(content);
     item.appendChild(time);
