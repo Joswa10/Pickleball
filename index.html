@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -173,6 +173,13 @@
         <button type="button" id="copyLinkBtn" class="btn-secondary small-btn copy-link-btn">Copy Viewer Link</button>
       </div>
     </div>
+
+    <!-- CONNECTION STATUS: small pill that appears when the live link
+         to Firebase drops, so a stuck/frozen tab is visible instead of
+         silently showing stale data. script.js toggles this. -->
+    <div id="connectionBanner" class="connection-banner" hidden>
+      ⚠️ Reconnecting…
+    </div>
   </div>
 
   <!-- ==============================================================
@@ -189,6 +196,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-  <script src="script.js?v=16"></script>
+  <script src="script.js?v=17"></script>
 </body>
 </html>
