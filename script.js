@@ -7,6 +7,7 @@ let recentlyFinished = [];   // array of { name, photo }
 let pendingPhoto = null;     // data URL for the photo about to be added
 let matchStartTime = null;   // timestamp (ms) the current match's timer started, or null if not running
 let matchTimerInterval = null; // setInterval handle for the live ticking display
+let lastAppliedUpdatedAt = 0;  // guards against ever applying a snapshot older than what we already have
 
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
@@ -287,6 +288,14 @@ function getCurrentScores() {
 // Called at the end of every action that mutates state.
 function syncStateToFirebase() {
   if (!isHost || !roomRef) return;
+
+  // Stamped and recorded BEFORE the write goes out, optimistically, so that
+  // if a poll or listener event for this same ref lands in the gap before
+  // the write is acknowledged, it can never look "newer" than this and
+  // revert what the user just did.
+  const updatedAt = Date.now();
+  lastAppliedUpdatedAt = updatedAt;
+
   roomRef
     .set({
       waitingQueue,
@@ -295,7 +304,7 @@ function syncStateToFirebase() {
       matchHistory,
       recentlyFinished,
       matchStartTime,
-      updatedAt: Date.now(),
+      updatedAt,
     })
     .catch((err) => {
       console.error('Firebase sync failed:', err);
@@ -306,8 +315,25 @@ function syncStateToFirebase() {
 // FIREBASE -> UI: rebuilds local state + re-renders from a Firebase
 // snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes,
 // and also whenever forceResync() pulls a fresh snapshot after a
-// reconnect/tab-restore.
+// reconnect/tab-restore/poll.
+//
+// GUARDED: every write stamps `updatedAt: Date.now()`. If an incoming
+// snapshot's `updatedAt` is older than the newest one we've already
+// applied, it's ignored outright. Without this, a stale read (from the
+// periodic poll, a lingering second tab on the same room, or a listener
+// catching up after being throttled) could silently overwrite a fresh
+// save/reset with old data — which is exactly what was happening before
+// this guard existed.
 function applyState(state) {
+  const incomingUpdatedAt = typeof state.updatedAt === 'number' ? state.updatedAt : 0;
+  if (incomingUpdatedAt < lastAppliedUpdatedAt) {
+    console.warn(
+      `Ignoring stale room snapshot (updatedAt ${incomingUpdatedAt} is older than ${lastAppliedUpdatedAt})`
+    );
+    return;
+  }
+  lastAppliedUpdatedAt = incomingUpdatedAt;
+
   waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
 
   courtPlayers = Array.isArray(state.courtPlayers) ? state.courtPlayers.slice(0, 4) : [];
