@@ -111,7 +111,17 @@ function initMultiplayer() {
     });
 
     renderRoomBar();
-    syncStateToFirebase(); // seed the room immediately so the QR/viewer isn't blank
+
+    // FIX: only seed Firebase with the (empty) local state if this room
+    // doesn't already have data. Previously this always ran immediately,
+    // racing against the 'value' listener above — on a host refresh, local
+    // vars reset to empty and this write could land first, wiping out the
+    // tournament that was already saved in Firebase.
+    roomRef.once('value').then((snapshot) => {
+      if (!snapshot.exists()) {
+        syncStateToFirebase();
+      }
+    });
   } else {
     if (!roomId) {
       showToast('No room code in this link', true);
