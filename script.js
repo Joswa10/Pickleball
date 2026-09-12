@@ -106,26 +106,43 @@ function initMultiplayer() {
     }
 
     roomRef = db.ref(`rooms/${roomId}`);
-
-    // Any change under rooms/{roomId} (including the host's own writes)
-    // re-renders the UI from the authoritative Firebase copy.
-    roomRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) applyState(data);
-    });
-
     renderRoomBar();
 
-    // FIX: only seed Firebase with the (empty) local state if this room
-    // doesn't already have data. Previously this always ran immediately,
-    // racing against the 'value' listener above — on a host refresh, local
-    // vars reset to empty and this write could land first, wiping out the
-    // tournament that was already saved in Firebase.
-    roomRef.once('value').then((snapshot) => {
-      if (!snapshot.exists()) {
-        syncStateToFirebase();
-      }
-    });
+    // FIX: read the room's existing data ONCE, first, and only decide what
+    // to do once that finishes. Previously the live 'on' listener and a
+    // one-time "does this room exist yet?" check both fired at the same
+    // time, racing each other — on a refresh, the seed-for-a-new-room write
+    // could land before (or instead of) the real saved data got applied,
+    // wiping Match History / Recently Finished and resetting the match
+    // timer's start time. Reading first removes that race entirely.
+    roomRef
+      .once('value')
+      .then((snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          applyState(data); // existing room — resume exactly where it left off
+        } else {
+          syncStateToFirebase(); // brand-new room — seed it with the current (empty) state
+        }
+
+        // Only attach the ongoing listener once the initial load/seed above
+        // has resolved, so it can never race that step.
+        roomRef.on(
+          'value',
+          (liveSnapshot) => {
+            const liveData = liveSnapshot.val();
+            if (liveData) applyState(liveData);
+          },
+          (err) => {
+            console.error('Firebase listener error:', err);
+            showToast('Lost connection to the room — check Firebase rules/network', true);
+          }
+        );
+      })
+      .catch((err) => {
+        console.error('Failed to load room from Firebase:', err);
+        showToast('Could not load saved room data — check Firebase config', true);
+      });
   } else {
     if (!roomId) {
       showToast('No room code in this link', true);
@@ -136,14 +153,21 @@ function initMultiplayer() {
     viewerBadge.hidden = false;
 
     roomRef = db.ref(`rooms/${roomId}`);
-    roomRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        applyState(data);
-      } else {
-        showToast('Waiting for the host to start the session…');
+    roomRef.on(
+      'value',
+      (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          applyState(data);
+        } else {
+          showToast('Waiting for the host to start the session…');
+        }
+      },
+      (err) => {
+        console.error('Firebase listener error:', err);
+        showToast('Could not connect to this room — check the link', true);
       }
-    });
+    );
   }
 }
 
