@@ -246,6 +246,28 @@ header p {
   letter-spacing: 0.3px;
 }
 
+/* ---------------------------------------------------------
+   CONNECTION STATUS: shown whenever the Firebase realtime
+   link drops (tab frozen/backgrounded, wifi hiccup, etc.),
+   so it's obvious the screen may be stale instead of the
+   app silently pretending everything is current.
+--------------------------------------------------------- */
+.connection-banner {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff3cd;
+  color: #7a5b00;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 70;
+  letter-spacing: 0.2px;
+}
+
 .input-row {
   display: flex;
   gap: 6px;
