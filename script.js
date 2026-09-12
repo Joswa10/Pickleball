@@ -20,6 +20,9 @@ const finishedContainer = document.getElementById('finishedContainer');
 const historyList = document.getElementById('historyList');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
+const team1Label = document.getElementById('team1Label');
+const team2Label = document.getElementById('team2Label');
+
 document.addEventListener('DOMContentLoaded', () => {
   addBtn.addEventListener('click', addPlayerToQueue);
   nameInput.addEventListener('keypress', (e) => {
@@ -41,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderRecentlyFinished();
   renderHistory();
   updateCourtButtons();
+  updateTeamLabels();
 });
 
 /* ---------------------------------------------------------
@@ -71,6 +75,17 @@ function adjustScore(slotIndex, delta) {
   let currentScore = parseInt(scoreElement.textContent, 10) || 0;
   currentScore = Math.max(0, currentScore + delta);
   scoreElement.textContent = currentScore;
+  updateTeamLabels();
+}
+
+function updateTeamLabels() {
+  const s0 = parseInt(document.getElementById('score0').textContent, 10) || 0;
+  const s1 = parseInt(document.getElementById('score1').textContent, 10) || 0;
+  const s2 = parseInt(document.getElementById('score2').textContent, 10) || 0;
+  const s3 = parseInt(document.getElementById('score3').textContent, 10) || 0;
+
+  if (team1Label) team1Label.textContent = `Team 1 [${s0 + s1}]`;
+  if (team2Label) team2Label.textContent = `Team 2 [${s2 + s3}]`;
 }
 
 /* ---------------------------------------------------------
@@ -208,6 +223,7 @@ function fillCourt() {
 
   renderQueue();
   updateCourtButtons();
+  updateTeamLabels();
 }
 
 function resetCourt() {
@@ -228,6 +244,7 @@ function resetCourt() {
 
   renderQueue();
   updateCourtButtons();
+  updateTeamLabels();
 }
 
 function saveMatch() {
@@ -268,6 +285,7 @@ function saveMatch() {
   }
 
   updateCourtButtons();
+  updateTeamLabels();
   showToast('Match saved!');
 }
 
