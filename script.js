@@ -8,6 +8,7 @@ let pendingPhoto = null;     // data URL for the photo about to be added
 let matchStartTime = null;   // timestamp (ms) the current match's timer started, or null if not running
 let matchTimerInterval = null; // setInterval handle for the live ticking display
 let lastAppliedUpdatedAt = 0;  // guards against ever applying a snapshot older than what we already have
+let pendingWrites = 0;         // number of our own writes still in flight to Firebase
 
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
@@ -121,6 +122,12 @@ function generateRoomId(length = 6) {
 --------------------------------------------------------- */
 function forceResync() {
   if (!roomRef) return;
+  // If we have a write of our own still in flight, the live listener will
+  // deliver its authoritative (server-timestamped) result in a moment —
+  // skip this manual fetch so it can't momentarily show a snapshot from
+  // just before our own change landed.
+  if (pendingWrites > 0) return;
+
   roomRef
     .once('value')
     .then((snapshot) => {
@@ -289,12 +296,7 @@ function getCurrentScores() {
 function syncStateToFirebase() {
   if (!isHost || !roomRef) return;
 
-  // Stamped and recorded BEFORE the write goes out, optimistically, so that
-  // if a poll or listener event for this same ref lands in the gap before
-  // the write is acknowledged, it can never look "newer" than this and
-  // revert what the user just did.
-  const updatedAt = Date.now();
-  lastAppliedUpdatedAt = updatedAt;
+  pendingWrites++;
 
   roomRef
     .set({
@@ -304,7 +306,20 @@ function syncStateToFirebase() {
       matchHistory,
       recentlyFinished,
       matchStartTime,
-      updatedAt,
+      // IMPORTANT: this must be the server's clock, not this device's
+      // Date.now(). Two devices (e.g. a host laptop and a viewer's phone)
+      // rarely agree on wall-clock time to the millisecond. When this used
+      // to be `Date.now()` computed locally, a device whose clock read even
+      // a couple of seconds "behind" would have every one of its writes
+      // stamped as older than an already-applied update from a
+      // faster-clocked device — even when it was genuinely the newer write.
+      // Once that happened, the staleness guard in applyState() would keep
+      // rejecting every later update from that device — including a Save
+      // that should have populated Recently Finished / Match History — and
+      // it would stay stuck that way until the page was reloaded.
+      // ServerValue.TIMESTAMP is filled in by Firebase's own servers, so
+      // every client is always comparing against the same single clock.
+      updatedAt: firebase.database.ServerValue.TIMESTAMP,
     })
     .catch((err) => {
       console.error('Firebase sync failed:', err);
@@ -314,6 +329,9 @@ function syncStateToFirebase() {
       // wrong" on the host while nothing actually saves to viewers.
       const reason = err && (err.code || err.message) ? ` (${err.code || err.message})` : '';
       showToast(`Save failed — not synced to viewers${reason}`, true);
+    })
+    .finally(() => {
+      pendingWrites = Math.max(0, pendingWrites - 1);
     });
 }
 
@@ -322,13 +340,12 @@ function syncStateToFirebase() {
 // and also whenever forceResync() pulls a fresh snapshot after a
 // reconnect/tab-restore/poll.
 //
-// GUARDED: every write stamps `updatedAt: Date.now()`. If an incoming
-// snapshot's `updatedAt` is older than the newest one we've already
-// applied, it's ignored outright. Without this, a stale read (from the
-// periodic poll, a lingering second tab on the same room, or a listener
-// catching up after being throttled) could silently overwrite a fresh
-// save/reset with old data — which is exactly what was happening before
-// this guard existed.
+// GUARDED: every write stamps `updatedAt` with Firebase's server clock
+// (see syncStateToFirebase). If an incoming snapshot's `updatedAt` is
+// older than the newest one we've already applied, it's ignored outright.
+// Without this, a stale read (from the periodic poll, a lingering second
+// tab on the same room, or a listener catching up after being throttled)
+// could silently overwrite a fresh save/reset with old data.
 function applyState(state) {
   const incomingUpdatedAt = typeof state.updatedAt === 'number' ? state.updatedAt : 0;
   if (incomingUpdatedAt < lastAppliedUpdatedAt) {
