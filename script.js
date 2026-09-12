@@ -225,6 +225,20 @@ function initMultiplayer() {
         roomRef.on(
           'value',
           (liveSnapshot) => {
+            // FIX: while one of our own writes is still in flight, the
+            // Firebase JS SDK can fire this listener with a local,
+            // optimistic "echo" snapshot that hasn't been fully merged
+            // with the multi-key update() payload yet (e.g. it can be
+            // missing matchHistory/recentlyFinished for an instant).
+            // applyState() would coerce those missing keys to [] and,
+            // on the very next syncStateToFirebase() call, write that
+            // empty array back to Firebase — which deletes the node
+            // entirely. Skipping applyState() here until our write
+            // settles (see pendingWrites in syncStateToFirebase) avoids
+            // ever latching in that incomplete snapshot on the writer's
+            // own client. forceResync()/the poll will pick up the real,
+            // server-committed value right after pendingWrites hits 0.
+            if (pendingWrites > 0) return;
             const liveData = liveSnapshot.val();
             if (liveData) applyState(liveData);
           },
@@ -269,6 +283,13 @@ function initMultiplayer() {
         roomRef.on(
           'value',
           (liveSnapshot) => {
+            // FIX: same guard as the host branch above. Viewers never set
+            // pendingWrites themselves (they never call
+            // syncStateToFirebase), so in practice this is a no-op for
+            // viewers today — but keeping both branches identical means
+            // this stays correct if viewer-side writes are ever added,
+            // and there's only one code path to reason about.
+            if (pendingWrites > 0) return;
             const liveData = liveSnapshot.val();
             if (liveData) applyState(liveData);
           },
@@ -357,6 +378,17 @@ function syncStateToFirebase() {
       // Kept for display/debugging only — no longer used to gate whether
       // a snapshot gets applied.
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
+    })
+    .then(() => {
+      // DEBUG: confirms the write actually reached Firebase and what it
+      // carried. If matchHistory/recentlyFinished show 0 here right after
+      // saveMatch(), the bug is upstream of Firebase (in local state);
+      // if they show the right counts here but the viewer still doesn't
+      // update, the bug is downstream (rules/listener on the viewer side).
+      console.log(
+        'Synced to Firebase — matchHistory:', matchHistory.length,
+        'recentlyFinished:', recentlyFinished.length
+      );
     })
     .catch((err) => {
       console.error('Firebase sync failed:', err);
