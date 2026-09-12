@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -131,6 +131,8 @@
         </div>
 
         <div class="team-label" id="team2Label">Team 2</div>
+        <div class="match-timer" id="matchTimer" hidden>⏱ 00:00</div>
+        <button id="playBtn" class="btn-play full-width-btn" disabled>▶ P L A Y</button>
         <button id="saveBtn" class="btn-primary full-width-btn" disabled>S A V E</button>
       </section>
 
@@ -187,6 +189,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-  <script src="script.js?v=14"></script>
+  <script src="script.js?v=15"></script>
 </body>
 </html>
