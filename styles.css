@@ -159,6 +159,16 @@ header p {
   z-index: 60;
 }
 
+/* FIX: .qr-modal-overlay above sets `display: flex` unconditionally,
+   which has equal specificity to (and loads after) the browser's
+   built-in `[hidden] { display: none }` UA rule — so author CSS wins
+   and the `hidden` attribute set by script.js was being ignored,
+   leaving the modal visible even after the × button set `hidden = true`.
+   This rule restores `hidden` as the authority for this element. */
+.qr-modal-overlay[hidden] {
+  display: none;
+}
+
 .qr-modal {
   position: relative;
   width: 100%;
