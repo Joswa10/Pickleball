@@ -131,6 +131,8 @@ function forceResync() {
     });
 }
 
+const RESYNC_POLL_MS = 4000;
+
 function setupConnectionWatchdog() {
   // Firebase's built-in "am I connected right now" signal. Fires true on
   // initial connect AND on every reconnect after a drop — that second case
@@ -151,11 +153,21 @@ function setupConnectionWatchdog() {
     if (event.persisted) forceResync();
   });
 
-  // Extra safety net: re-sync whenever the tab regains visibility, in case
-  // the above two signals don't fire on a given platform.
+  // Re-sync whenever the tab regains visibility (covers tab-switch cases).
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') forceResync();
   });
+
+  // HARD FALLBACK: none of the signals above fire when a window is simply
+  // unfocused-but-still-visible (e.g. two separate Chrome windows sitting
+  // side by side) — the Page Visibility API only reports "hidden" for a
+  // minimized/switched-away tab, not an unfocused window. Some browsers
+  // still quietly throttle or drop the realtime socket in that state with
+  // no event at all to catch. An unconditional poll sidesteps all of that:
+  // every few seconds, just ask Firebase for the current truth and apply
+  // it. Cheap for an app this size, and makes staleness a non-issue
+  // regardless of which window/tab/OS quirk is in play.
+  setInterval(forceResync, RESYNC_POLL_MS);
 }
 
 function initMultiplayer() {
