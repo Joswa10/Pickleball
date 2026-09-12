@@ -1,8 +1,10 @@
 const EMPTY_SLOT = '— —';
 
-let waitingQueue = [];
-let matchHistory = [];
-let recentlyFinished = [];
+let waitingQueue = [];       // array of { name, photo }
+let courtPlayers = [null, null, null, null]; // each null or { name, photo }
+let matchHistory = [];       // array of { players:[{name,score,photo} x4], team1Total, team2Total, time }
+let recentlyFinished = [];   // array of { name, photo }
+let pendingPhoto = null;     // data URL for the photo about to be added
 
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
@@ -10,6 +12,10 @@ const removeBtn = document.getElementById('removeBtn');
 const clearQueueBtn = document.getElementById('clearQueueBtn');
 const queueList = document.getElementById('queueList');
 const queueCount = document.getElementById('queueCount');
+
+const photoInput = document.getElementById('photoInput');
+const photoPreview = document.getElementById('photoPreview');
+const photoPickerIcon = document.getElementById('photoPickerIcon');
 
 const fillCourtBtn = document.getElementById('fillCourtBtn');
 const resetCourtBtn = document.getElementById('resetCourtBtn');
@@ -30,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   nameInput.addEventListener('input', () => nameInput.classList.remove('input-error'));
 
+  photoInput.addEventListener('change', handlePhotoSelected);
+
   removeBtn.addEventListener('click', removeLastPlayer);
   clearQueueBtn.addEventListener('click', clearQueue);
 
@@ -41,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   clearHistoryBtn.addEventListener('click', clearHistory);
 
   renderQueue();
+  renderCourt();
   renderRecentlyFinished();
   renderHistory();
   updateCourtButtons();
@@ -63,6 +72,51 @@ function showToast(message, isError = false) {
   toast.className = 'toast show' + (isError ? ' toast-error' : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+/* ---------------------------------------------------------
+   Photo picker (used when adding a new player)
+--------------------------------------------------------- */
+function handlePhotoSelected() {
+  const file = photoInput.files && photoInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    pendingPhoto = e.target.result;
+    photoPreview.src = pendingPhoto;
+    photoPreview.classList.add('has-photo');
+    photoPickerIcon.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetPhotoPicker() {
+  pendingPhoto = null;
+  photoInput.value = '';
+  photoPreview.src = '';
+  photoPreview.classList.remove('has-photo');
+  photoPickerIcon.style.display = '';
+}
+
+/* ---------------------------------------------------------
+   Avatar rendering helper — used everywhere a player photo
+   shows up. Falls back to a solid initial box when there's
+   no photo, so the "box" shape is always filled.
+--------------------------------------------------------- */
+function createAvatarElement(player, className) {
+  if (player && player.photo) {
+    const img = document.createElement('img');
+    img.src = player.photo;
+    img.alt = player.name || '';
+    img.className = className;
+    return img;
+  }
+  const div = document.createElement('div');
+  div.className = `${className} avatar-fallback`;
+  const initial = player && player.name ? player.name.trim().charAt(0).toUpperCase() : '?';
+  div.textContent = initial || '?';
+  return div;
 }
 
 /* ---------------------------------------------------------
@@ -91,24 +145,14 @@ function updateTeamLabels() {
 /* ---------------------------------------------------------
    Helpers shared across queue / court
 --------------------------------------------------------- */
-function getCourtPlayers() {
-  const players = [];
-  for (let i = 0; i < 4; i++) {
-    const span = document.querySelector(`#slot${i} .player-name`);
-    const text = span ? span.textContent : EMPTY_SLOT;
-    players.push(text === EMPTY_SLOT ? null : text);
-  }
-  return players;
-}
-
 function isCourtOccupied() {
-  return getCourtPlayers().some((p) => p !== null);
+  return courtPlayers.some((p) => p !== null);
 }
 
 function isNameInUse(name) {
   const lower = name.toLowerCase();
-  const inQueue = waitingQueue.some((p) => p.toLowerCase() === lower);
-  const onCourt = getCourtPlayers().some((p) => p && p.toLowerCase() === lower);
+  const inQueue = waitingQueue.some((p) => p.name.toLowerCase() === lower);
+  const onCourt = courtPlayers.some((p) => p && p.name.toLowerCase() === lower);
   return inQueue || onCourt;
 }
 
@@ -132,9 +176,10 @@ function addPlayerToQueue() {
     return;
   }
 
-  waitingQueue.push(name);
+  waitingQueue.push({ name, photo: pendingPhoto });
   nameInput.value = '';
   nameInput.classList.remove('input-error');
+  resetPhotoPicker();
   nameInput.focus();
   renderQueue();
 }
@@ -182,17 +227,25 @@ function renderQueue() {
       const li = document.createElement('li');
       li.className = 'queue-row';
 
+      const left = document.createElement('div');
+      left.className = 'queue-left';
+
+      const avatar = createAvatarElement(player, 'queue-photo');
+
       const label = document.createElement('span');
-      label.textContent = `${index + 1}. ${player}`;
+      label.textContent = `${index + 1}. ${player.name}`;
+
+      left.appendChild(avatar);
+      left.appendChild(label);
 
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'queue-del-btn';
       delBtn.textContent = '\u00d7';
-      delBtn.setAttribute('aria-label', `Remove ${player}`);
+      delBtn.setAttribute('aria-label', `Remove ${player.name}`);
       delBtn.addEventListener('click', () => removePlayerAt(index));
 
-      li.appendChild(label);
+      li.appendChild(left);
       li.appendChild(delBtn);
       queueList.appendChild(li);
     });
@@ -204,6 +257,25 @@ function renderQueue() {
 /* ---------------------------------------------------------
    Court
 --------------------------------------------------------- */
+function setSlotPlayer(index, player) {
+  const nameSpan = document.querySelector(`#slot${index} .player-name`);
+  const photoWrap = document.querySelector(`#slot${index} .player-photo-wrap`);
+  photoWrap.innerHTML = '';
+
+  if (player) {
+    nameSpan.textContent = player.name;
+    photoWrap.appendChild(createAvatarElement(player, 'court-photo'));
+  } else {
+    nameSpan.textContent = EMPTY_SLOT;
+  }
+}
+
+function renderCourt() {
+  for (let i = 0; i < 4; i++) {
+    setSlotPlayer(i, courtPlayers[i]);
+  }
+}
+
 function fillCourt() {
   if (isCourtOccupied()) {
     showToast('Court already has players — save or reset the match first', true);
@@ -216,11 +288,10 @@ function fillCourt() {
   }
 
   for (let i = 0; i < 4; i++) {
-    const playerName = waitingQueue.shift();
-    document.querySelector(`#slot${i} .player-name`).textContent = playerName;
-    document.getElementById(`score${i}`).textContent = '0';
+    courtPlayers[i] = waitingQueue.shift();
   }
 
+  renderCourt();
   renderQueue();
   updateCourtButtons();
   updateTeamLabels();
@@ -234,14 +305,14 @@ function resetCourt() {
 
   // Walk slots back-to-front so unshift() restores the original slot order.
   for (let i = 3; i >= 0; i--) {
-    const nameSpan = document.querySelector(`#slot${i} .player-name`);
-    if (nameSpan.textContent !== EMPTY_SLOT) {
-      waitingQueue.unshift(nameSpan.textContent);
-      nameSpan.textContent = EMPTY_SLOT;
+    if (courtPlayers[i]) {
+      waitingQueue.unshift(courtPlayers[i]);
+      courtPlayers[i] = null;
     }
     document.getElementById(`score${i}`).textContent = '0';
   }
 
+  renderCourt();
   renderQueue();
   updateCourtButtons();
   updateTeamLabels();
@@ -253,8 +324,7 @@ function saveMatch() {
     return;
   }
 
-  const players = getCourtPlayers();
-  if (players.some((p) => p === null)) {
+  if (courtPlayers.some((p) => p === null)) {
     showToast('Please fill all four court slots before saving', true);
     return;
   }
@@ -266,7 +336,7 @@ function saveMatch() {
   const team2Total = scores[2] + scores[3];
 
   const matchRecord = {
-    players: players.map((name, i) => ({ name, score: scores[i] })),
+    players: courtPlayers.map((p, i) => ({ name: p.name, photo: p.photo, score: scores[i] })),
     team1Total,
     team2Total,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -274,16 +344,19 @@ function saveMatch() {
 
   matchHistory.unshift(matchRecord);
   // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
-  recentlyFinished = recentlyFinished.concat(players);
+  recentlyFinished = recentlyFinished.concat(
+    courtPlayers.map((p) => ({ name: p.name, photo: p.photo }))
+  );
 
   renderHistory();
   renderRecentlyFinished();
 
+  courtPlayers = [null, null, null, null];
   for (let i = 0; i < 4; i++) {
-    document.querySelector(`#slot${i} .player-name`).textContent = EMPTY_SLOT;
     document.getElementById(`score${i}`).textContent = '0';
   }
 
+  renderCourt();
   updateCourtButtons();
   updateTeamLabels();
   showToast('Match saved!');
@@ -307,8 +380,13 @@ function renderRecentlyFinished() {
     const row = document.createElement('div');
     row.className = 'requeue-row';
 
+    const left = document.createElement('div');
+    left.className = 'requeue-left';
+    left.appendChild(createAvatarElement(player, 'finished-photo'));
+
     const label = document.createElement('span');
-    label.textContent = player;
+    label.textContent = player.name;
+    left.appendChild(label);
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -316,7 +394,7 @@ function renderRecentlyFinished() {
     btn.textContent = '+ Requeue';
     btn.addEventListener('click', () => requeuePlayer(index));
 
-    row.appendChild(label);
+    row.appendChild(left);
     row.appendChild(btn);
     finishedContainer.appendChild(row);
   });
@@ -326,8 +404,8 @@ function requeuePlayer(index) {
   const player = recentlyFinished[index];
   if (!player) return;
 
-  if (isNameInUse(player)) {
-    showToast(`"${player}" is already in the queue`, true);
+  if (isNameInUse(player.name)) {
+    showToast(`"${player.name}" is already in the queue`, true);
     return;
   }
 
@@ -361,36 +439,46 @@ function renderHistory() {
     if (match.team1Total > match.team2Total) winner = 1;
     else if (match.team2Total > match.team1Total) winner = 2;
 
-    const line = document.createElement('div');
-    line.className = 'history-line';
+    const content = document.createElement('div');
+    content.className = 'history-content';
 
-    const icon = document.createTextNode(winner ? '\uD83C\uDFC6 ' : '\uD83E\uDD1D ');
+    const main = document.createElement('div');
+    main.className = 'history-main';
 
-    const t1 = document.createElement(winner === 1 ? 'strong' : 'span');
-    t1.textContent = `${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${match.team1Total}]`;
+    const team1Line = document.createElement('div');
+    team1Line.className = 'history-line' + (winner === 1 ? ' winner-line' : '');
+    team1Line.textContent = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${match.team1Total}]`;
 
-    const vs = document.createElement('span');
-    vs.className = 'vs-label';
-    vs.textContent = ' VS ';
+    const vsLine = document.createElement('div');
+    vsLine.className = 'history-vs';
+    vsLine.textContent = winner ? 'VS' : '\uD83E\uDD1D VS';
 
-    const t2 = document.createElement(winner === 2 ? 'strong' : 'span');
-    t2.textContent = `${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${match.team2Total}]`;
+    const team2Line = document.createElement('div');
+    team2Line.className = 'history-line' + (winner === 2 ? ' winner-line' : '');
+    team2Line.textContent = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${match.team2Total}]`;
 
-    line.appendChild(icon);
-    line.appendChild(t1);
-    line.appendChild(vs);
-    line.appendChild(t2);
+    main.appendChild(team1Line);
+    main.appendChild(vsLine);
+    main.appendChild(team2Line);
 
-    const time = document.createElement('span');
+    // Show the winning team's two photos on the right. On a tie, default
+    // to team 1's photos since there's no outright winner to feature.
+    const photosWrap = document.createElement('div');
+    photosWrap.className = 'history-photos';
+    const winningPlayers = winner === 2 ? [p2, p3] : [p0, p1];
+    winningPlayers.forEach((p) => {
+      photosWrap.appendChild(createAvatarElement(p, 'history-photo'));
+    });
+
+    content.appendChild(main);
+    content.appendChild(photosWrap);
+
+    const time = document.createElement('div');
     time.className = 'history-time';
     time.textContent = match.time;
 
-    const row = document.createElement('div');
-    row.className = 'history-row';
-    row.appendChild(line);
-    row.appendChild(time);
-
-    item.appendChild(row);
+    item.appendChild(content);
+    item.appendChild(time);
     historyList.appendChild(item);
   });
 }
