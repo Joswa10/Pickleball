@@ -26,23 +26,24 @@
    <header>
       <h1>Pickle Jam</h1>
       <p>Queue</p>
+
+      <!-- MULTIPLAYER: mini QR toggle (Host only) — opens the spectator
+           QR code in a modal. Hidden by default; script.js reveals it
+           once a room exists. -->
+      <button type="button" id="qrToggleBtn" class="qr-toggle-btn" hidden aria-label="Show spectator QR code">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+          <line x1="14" y1="14" x2="14" y2="21"></line>
+          <line x1="21" y1="14" x2="21" y2="21"></line>
+          <line x1="17.5" y1="14" x2="17.5" y2="17.5"></line>
+          <line x1="14" y1="17.5" x2="21" y2="17.5"></line>
+        </svg>
+      </button>
     </header>
 
     <main class="container">
-
-      <!-- ============================================================
-           MULTIPLAYER: Room card (Host only) — shows the QR code that
-           spectators scan to open Viewer mode. Hidden by default;
-           script.js reveals this OR the viewer badge below, never both.
-      ============================================================= -->
-      <section class="card room-card" id="roomCard" hidden>
-        <div class="room-card-header">
-          <h2>Spectator Link</h2>
-        </div>
-        <div id="qrcodeContainer" class="qrcode-container"></div>
-        <p class="room-code-text">Room Code: <strong id="roomCodeText"></strong></p>
-        <button type="button" id="copyLinkBtn" class="btn-secondary small-btn copy-link-btn">Copy Viewer Link</button>
-      </section>
 
       <!-- MULTIPLAYER: Viewer badge (Viewer mode only) -->
       <div id="viewerBadge" class="viewer-badge" hidden>
@@ -155,6 +156,21 @@
         <div id="historyList" class="scroll-list"></div>
       </section>
     </main>
+
+    <!-- ============================================================
+         MULTIPLAYER: QR modal (Host only) — hidden until qrToggleBtn
+         in the header is tapped. Same QR/room-code/copy-link content
+         as before, just presented as a popup instead of always-on.
+    ============================================================= -->
+    <div class="qr-modal-overlay" id="qrModalOverlay" hidden>
+      <div class="qr-modal">
+        <button type="button" id="qrModalCloseBtn" class="qr-modal-close" aria-label="Close">&times;</button>
+        <h2>Spectator Link</h2>
+        <div id="qrcodeContainer" class="qrcode-container"></div>
+        <p class="room-code-text">Room Code: <strong id="roomCodeText"></strong></p>
+        <button type="button" id="copyLinkBtn" class="btn-secondary small-btn copy-link-btn">Copy Viewer Link</button>
+      </div>
+    </div>
   </div>
 
   <!-- ==============================================================
