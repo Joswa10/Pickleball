@@ -191,6 +191,12 @@ header p {
   color: var(--text-muted);
 }
 
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ---------------------------------------------------------
    MULTIPLAYER: QR modal (Host) — white popup with the QR
    code, room code, and copy-link button. Opened via the
