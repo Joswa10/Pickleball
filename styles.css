@@ -822,9 +822,11 @@ button:disabled:active {
 }
 
 /* ---------------------------------------------------------
-   MULTIPLAYER: Viewer mode — hides every control a spectator
-   shouldn't touch, while leaving names, photos, scores, and
-   history fully visible and live-updating.
+   MULTIPLAYER: Viewer mode — a spectator only ever sees the
+   Waiting Queue and the Court. Every control is hidden, AND
+   the Recently Finished / Match History cards (".host-only-section")
+   are removed entirely — not just their buttons — because those
+   two are host-only information, not just host-only actions.
 --------------------------------------------------------- */
 body.viewer-mode .input-row,
 body.viewer-mode .action-row,
@@ -833,7 +835,8 @@ body.viewer-mode .full-width-btn,
 body.viewer-mode .score-btn,
 body.viewer-mode .queue-del-btn,
 body.viewer-mode .requeue-row button,
-body.viewer-mode #clearHistoryBtn {
+body.viewer-mode #clearHistoryBtn,
+body.viewer-mode .host-only-section {
   display: none !important;
 }
 
@@ -885,5 +888,17 @@ body.viewer-mode #clearHistoryBtn {
 
   .court-visual {
     height: 220px;
+  }
+}
+
+/* Viewer + desktop/tablet: Recently Finished, Match History, and the
+   Shuffle/Fill/Reset action bar are all hidden (see the viewer-mode rule
+   above), so re-flow the grid down to just Queue + Court instead of
+   leaving their reserved rows as blank empty space. */
+@media (min-width: 700px) {
+  body.viewer-mode .container {
+    grid-template-areas:
+      "viewer viewer"
+      "queue court";
   }
 }
