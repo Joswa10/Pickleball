@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -167,17 +167,16 @@
       </section>
 
       <!-- Recently Finished Players
-           HOST ONLY: "host-only-section" is hidden entirely on Viewer
-           (see body.viewer-mode rule in styles.css) and script.js also
-           skips building its contents in viewer mode — a spectator should
-           only ever see the Waiting Queue and the Court, nothing else. -->
-      <section class="card host-only-section" id="recentlyFinishedSection">
+           Visible to both Host and Viewer (read-only for Viewer — the
+           "+ Requeue" buttons are hidden via body.viewer-mode CSS). -->
+      <section class="card" id="recentlyFinishedSection">
         <h2>Recently Finished</h2>
         <div id="finishedContainer" class="scroll-list"></div>
       </section>
 
-      <!-- Match History — HOST ONLY, see note above. -->
-      <section class="card host-only-section" id="matchHistorySection">
+      <!-- Match History — visible to both Host and Viewer (read-only for
+           Viewer — the "Clear" button is hidden via body.viewer-mode CSS). -->
+      <section class="card" id="matchHistorySection">
         <div class="card-header">
           <h2>Match History</h2>
           <button id="clearHistoryBtn" class="btn-danger-light small-btn">Clear</button>
@@ -223,6 +222,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-  <script src="script.js?v=27"></script>
+  <script src="script.js?v=28"></script>
 </body>
 </html>
