@@ -1,5 +1,34 @@
 const EMPTY_SLOT = '— —';
 
+// VERIFICATION: bump this string every time you deploy. Open the console
+// (Cmd+Option+J) on BOTH the host and viewer tabs and confirm this exact
+// line prints on both before troubleshooting anything else — if one tab
+// shows an older/missing build tag, that tab is running stale cached
+// code, not the file you think you just pushed.
+const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14a';
+console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
+
+
+// Firebase RTDB internally stores everything as a tree, not real arrays.
+// When you write a JS array, the SDK converts it to integer-keyed nodes —
+// and when reading it back, it only reconstitutes a real JS array if the
+// keys look "array-like" (dense, starting at 0). An array with `null`
+// holes (exactly what courtPlayers looks like after every Save/Reset —
+// e.g. [null, null, null, null]) can come back as a plain OBJECT instead
+// (e.g. {} or {"2": {...}}), not an array. The old code only handled the
+// array case, so a Save/Reset could silently fail to round-trip correctly
+// depending on which slots were empty. This normalizes either shape into
+// a real 4-element array regardless.
+function normalizeCourtPlayers(value) {
+  const result = [null, null, null, null];
+  if (Array.isArray(value)) {
+    for (let i = 0; i < 4; i++) result[i] = value[i] ?? null;
+  } else if (value && typeof value === 'object') {
+    for (let i = 0; i < 4; i++) result[i] = value[i] ?? value[String(i)] ?? null;
+  }
+  return result;
+}
+
 let waitingQueue = [];       // array of { name, photo }
 let courtPlayers = [null, null, null, null]; // each null or { name, photo }
 let matchHistory = [];       // array of { players:[{name,score,photo} x4], team1Total, team2Total, time }
@@ -408,8 +437,7 @@ function applyState(state) {
 
   waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
 
-  courtPlayers = Array.isArray(state.courtPlayers) ? state.courtPlayers.slice(0, 4) : [];
-  while (courtPlayers.length < 4) courtPlayers.push(null);
+  courtPlayers = normalizeCourtPlayers(state.courtPlayers);
 
   matchHistory = Array.isArray(state.matchHistory) ? state.matchHistory : [];
   recentlyFinished = Array.isArray(state.recentlyFinished) ? state.recentlyFinished : [];
