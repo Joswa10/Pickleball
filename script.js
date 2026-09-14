@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-viewer-history-restored-2026-09-14e';
+const BUILD_ID = 'pickle-jam-history-copy-2026-09-14f';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -106,6 +106,7 @@ const matchTimerDisplay = document.getElementById('matchTimer');
 const finishedContainer = document.getElementById('finishedContainer');
 const historyList = document.getElementById('historyList');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+const copyHistoryBtn = document.getElementById('copyHistoryBtn');
 
 const team1Label = document.getElementById('team1Label');
 const team2Label = document.getElementById('team2Label');
@@ -680,6 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
   playBtn.addEventListener('click', startMatch);
 
   clearHistoryBtn.addEventListener('click', clearHistory);
+  copyHistoryBtn.addEventListener('click', copyMatchHistoryToClipboard);
 
   // Lets you compare versions on two separate phones with no dev tools:
   // tap the "Synced Xs ago" line on each device and compare the toast.
@@ -1275,6 +1277,7 @@ function requeuePlayer(index) {
 --------------------------------------------------------- */
 function renderHistory() {
   historyList.innerHTML = '';
+  copyHistoryBtn.disabled = matchHistory.length === 0;
 
   if (matchHistory.length === 0) {
     const empty = document.createElement('div');
@@ -1364,4 +1367,67 @@ function clearHistory() {
   matchHistory = [];
   renderHistory();
   syncStateToFirebase(); // MULTIPLAYER
+}
+
+/* ---------------------------------------------------------
+   Copy match history as plain text (for pasting into Notes,
+   a text message, etc). Read-only, so this works for both
+   Host and Viewer. Mirrors the same winner/VS/score layout
+   shown on screen in renderHistory() above, just as plain
+   text with no photos — a blank line between each match so
+   they stay visually separated once pasted somewhere else.
+--------------------------------------------------------- */
+function formatMatchHistoryForClipboard() {
+  const blocks = [];
+
+  matchHistory.forEach((match) => {
+    // Same defensive shape-guard as renderHistory() — skip a single
+    // malformed record rather than let it break the whole export.
+    if (!match || !Array.isArray(match.players) || match.players.length < 4) return;
+
+    const [p0, p1, p2, p3] = match.players.map((p) => ({
+      name: 'Unknown',
+      score: 0,
+      ...(p || {}),
+    }));
+
+    const team1Total = match.team1Total ?? 0;
+    const team2Total = match.team2Total ?? 0;
+
+    let winner = null;
+    if (team1Total > team2Total) winner = 1;
+    else if (team2Total > team1Total) winner = 2;
+
+    const team1Line = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${team1Total}]`;
+    const vsLine = winner ? 'VS' : '\uD83E\uDD1D VS';
+    const team2Line = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${team2Total}]`;
+    const timeLine = match.duration ? `${match.time} \u00b7 ${match.duration}` : match.time;
+
+    blocks.push(`${team1Line}\n${vsLine}\n${team2Line}\n${timeLine}`);
+  });
+
+  const header = `Pickle Jam \u2014 Match History${roomId ? ` (Room ${roomId})` : ''}\nExported ${new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+
+  // Blank line between the header and the first match, AND between every
+  // match after that — the "space in the middle" that keeps each match
+  // its own visual block once pasted into Notes.
+  return `${header}\n\n${blocks.join('\n\n')}`;
+}
+
+function copyMatchHistoryToClipboard() {
+  if (matchHistory.length === 0) {
+    showToast('No match history to copy yet', true);
+    return;
+  }
+
+  const text = formatMatchHistoryForClipboard();
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => showToast('Match history copied!'))
+      .catch(() => showToast('Could not copy match history', true));
+  } else {
+    showToast('Copy not supported on this browser', true);
+  }
 }
