@@ -65,10 +65,15 @@ header {
    MULTIPLAYER: mini QR toggle icon (Host only) — sits in the
    header's top-right corner; tapping it opens the QR modal.
 --------------------------------------------------------- */
-.qr-toggle-btn {
+.header-icon-row {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));
   right: 12px;
+  display: flex;
+  gap: 6px;
+}
+
+.qr-toggle-btn {
   width: 30px;
   height: 30px;
   padding: 0;
@@ -85,6 +90,17 @@ header {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Manual "force sync" icon spins while a resync request is in flight, so
+   tapping it gives immediate visual feedback instead of feeling inert. */
+.qr-toggle-btn.spinning svg {
+  animation: sync-spin 0.8s linear infinite;
+}
+
+@keyframes sync-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 header h1 {
   margin: 0;
   font-size: 1.2rem;
@@ -98,6 +114,38 @@ header p {
   font-weight: 500;
   opacity: 0.9;
   letter-spacing: 0.2px;
+}
+
+/* SYNC VISIBILITY: always-on staleness indicator in the header. Turns
+   amber/bold once data hasn't refreshed in a while — see
+   updateSyncIndicator() in script.js — so a stuck sync is visible at a
+   glance instead of quietly showing old data with no signal anything is
+   wrong. */
+.sync-status-text {
+  font-size: 0.68rem !important;
+  opacity: 0.75;
+  transition: color 0.2s ease;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.sync-status-text.sync-stale {
+  color: #ffd54f;
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* SYNC VISIBILITY: persistent error banner — stays up until a snapshot
+   applies successfully again (see showSyncError/hideSyncError), unlike a
+   toast which disappears whether or not anyone saw it. */
+.sync-error-banner {
+  background: var(--danger-red, #c0392b);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 7px 12px;
+  flex-shrink: 0;
 }
 
 .container {
