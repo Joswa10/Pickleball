@@ -1,889 +1,224 @@
-:root {
-  --dark-green: #2d5a52;   /* Deep frosty teal for the top header */
-  --mid-green: #3b7a6f;    /* Smooth sage-teal for buttons */
-  --light-green: #b2d8d0;  /* Pale mint for card borders & input outlines */
-  --pale-green: #eaf4f2;   /* Very light frosty green for the main app background */
-  
-  /* Keep the rest of your variables the same below */
- --court-blue: #304049;    /* Dark slate blue for the main court playing area */
-  --kitchen-blue: #5b6e68;
-  --text-dark: #1c2e2a;
-  --text-muted: #527068;
-  --danger-red: #c62828;
-  --vh: 1vh;
-}
-
-* {
-  box-sizing: border-box;
-  -webkit-font-smoothing: antialiased;
-  touch-action: manipulation;
-}
-
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  height: calc(var(--vh, 1vh) * 100);
-  height: 100dvh;
-  overflow: hidden;
-  position: fixed;
-  inset: 0;
-  overscroll-behavior: none;
-  background-color: #121212;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: var(--text-dark);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.app-frame {
-  position: relative;
-  width: 100%;
-  max-width: 414px;
-  height: 100%;
-  height: calc(var(--vh, 1vh) * 100);
-  height: 100dvh;
-  background-color: var(--pale-green);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-header {
-  position: relative;
-  background-color: var(--dark-green);
-  color: #ffffff;
-  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-  text-align: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: mini QR toggle icon (Host only) — sits in the
-   header's top-right corner; tapping it opens the QR modal.
---------------------------------------------------------- */
-.header-icon-row {
-  position: absolute;
-  top: calc(8px + env(safe-area-inset-top));
-  right: 12px;
-  display: flex;
-  gap: 6px;
-}
-
-.qr-toggle-btn {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.55);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qr-toggle-btn:active {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Manual "force sync" icon spins while a resync request is in flight, so
-   tapping it gives immediate visual feedback instead of feeling inert. */
-.qr-toggle-btn.spinning svg {
-  animation: sync-spin 0.8s linear infinite;
-}
-
-@keyframes sync-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-header h1 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-header p {
-  margin: 3px 0 0;
-  font-size: 0.72rem;
-  font-weight: 500;
-  opacity: 0.9;
-  letter-spacing: 0.2px;
-}
-
-/* SYNC VISIBILITY: always-on staleness indicator in the header. Turns
-   amber/bold once data hasn't refreshed in a while — see
-   updateSyncIndicator() in script.js — so a stuck sync is visible at a
-   glance instead of quietly showing old data with no signal anything is
-   wrong. */
-.sync-status-text {
-  font-size: 0.68rem !important;
-  opacity: 0.75;
-  transition: color 0.2s ease;
-  text-decoration: underline dotted;
-  cursor: pointer;
-}
-
-.sync-status-text.sync-stale {
-  color: #ffd54f;
-  opacity: 1;
-  font-weight: 700;
-}
-
-/* SYNC VISIBILITY: persistent error banner — stays up until a snapshot
-   applies successfully again (see showSyncError/hideSyncError), unlike a
-   toast which disappears whether or not anyone saw it. */
-.sync-error-banner {
-  background: var(--danger-red, #c0392b);
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 7px 12px;
-  flex-shrink: 0;
-}
-
-.container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom));
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-.card {
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-}
-
-.card h2 {
-  margin: 0 0 6px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--dark-green);
-  letter-spacing: 0.2px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.card-header span {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: QR modal (Host) — white popup with the QR
-   code, room code, and copy-link button. Opened via the
-   mini icon in the header; closed via × or an outside click.
---------------------------------------------------------- */
-.qr-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(20, 30, 28, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 60;
-}
-
-/* FIX: .qr-modal-overlay above sets `display: flex` unconditionally,
-   which has equal specificity to (and loads after) the browser's
-   built-in `[hidden] { display: none }` UA rule — so author CSS wins
-   and the `hidden` attribute set by script.js was being ignored,
-   leaving the modal visible even after the × button set `hidden = true`.
-   This rule restores `hidden` as the authority for this element. */
-.qr-modal-overlay[hidden] {
-  display: none;
-}
-
-.qr-modal {
-  position: relative;
-  width: 100%;
-  max-width: 300px;
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 22px 18px 18px;
-  text-align: center;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
-}
-
-.qr-modal h2 {
-  margin: 0 0 2px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--dark-green);
-}
-
-.qr-modal-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border-radius: 6px;
-  background: #eaf4f2;
-  color: var(--text-dark);
-  font-size: 1.05rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qrcode-container {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0 4px;
-}
-
-.qrcode-container img,
-.qrcode-container canvas {
-  border-radius: 6px;
-  border: 4px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
-}
-
-.room-code-text {
-  margin: 4px 0 8px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
-.room-code-text strong {
-  color: var(--dark-green);
-  letter-spacing: 1.5px;
-  font-size: 0.95rem;
-}
-
-.copy-link-btn {
-  width: 100%;
-}
-
-/* MULTIPLAYER: Viewer badge (Viewer mode) — replaces the room card */
-.viewer-badge {
-  flex-shrink: 0;
-  background: var(--dark-green);
-  color: #ffffff;
-  font-size: 0.74rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 8px 10px;
-  border-radius: 8px;
-  letter-spacing: 0.3px;
-}
-
-/* ---------------------------------------------------------
-   CONNECTION STATUS: shown whenever the Firebase realtime
-   link drops (tab frozen/backgrounded, wifi hiccup, etc.),
-   so it's obvious the screen may be stale instead of the
-   app silently pretending everything is current.
---------------------------------------------------------- */
-.connection-banner {
-  position: absolute;
-  top: calc(8px + env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff3cd;
-  color: #7a5b00;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  z-index: 70;
-  letter-spacing: 0.2px;
-}
-
-.input-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
-  align-items: center;
-}
-
-.action-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  margin-bottom: 2px;
-}
-
-.action-row button {
-  flex: 1;
-}
-
-input[type="text"] {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1.5px solid var(--light-green);
-  border-radius: 6px;
-  font-size: 16px; /* Prevents auto-zoom on iOS focus */
-  font-weight: 500;
-  color: var(--text-dark);
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-input[type="text"]::placeholder {
-  color: #889988;
-}
-
-input[type="text"].input-error {
-  border-color: var(--danger-red);
-  animation: shake 0.35s;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
-}
-
-/* ---------------------------------------------------------
-   Photo picker (add-player row)
---------------------------------------------------------- */
-.photo-picker {
-  position: relative;
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  border: 1.5px solid var(--light-green);
-  background: #fbfdfb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.photo-picker-icon {
-  font-size: 1.05rem;
-  line-height: 1;
-  pointer-events: none;
-}
-
-#photoPreview {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: none;
-}
-
-#photoPreview.has-photo {
-  display: block;
-}
-
-/* ---------------------------------------------------------
-   Shared avatar box — photos always fill their box (cropped
-   via object-fit: cover), with a solid initial as fallback
-   when a player has no photo.
---------------------------------------------------------- */
-.avatar-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--mid-green);
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.queue-photo {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.7rem;
-}
-
-.court-photo {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.6rem;
-}
-
-.finished-photo {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.68rem;
-}
-
-.history-photo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1.5px solid var(--dark-green);
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.72rem;
-}
-
-.scroll-list {
-  max-height: 75px;
-  overflow-y: auto;
-  border: 1px solid var(--light-green);
-  border-radius: 6px;
-  background: #fbfdfb;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.scroll-list li, .history-item {
-  padding: 6px 8px;
-  border-bottom: 1px solid #e0eee0;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-dark);
-}
-
-.scroll-list li:last-child, .history-item:last-child {
-  border-bottom: none;
-}
-
-.queue-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.queue-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.queue-left span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-del-btn {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: #ffebee;
-  color: var(--danger-red);
-  font-size: 0.85rem;
-  line-height: 1;
-  font-weight: 700;
-}
-
-.empty-hint {
-  padding: 10px 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  font-style: italic;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.court-card {
-  padding: 8px;
-}
-
-.court-visual {
-  background: var(--court-blue, #3b5266); /* Dark slate blue */
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 6px;
-  padding: 6px;
-  border: 2px solid #ffffff;
-  border-radius: 6px;
-  height: 140px;
-}
-
-.kitchen-zone {
-  position: absolute;
-  top: 30%;
-  left: 0;
-  right: 0;
-  height: 40%;
-  background: var(--kitchen-blue, #5b6e68); /* Olive-slate grey-green */
-  pointer-events: none;
-}
-
-.court-net {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 2px dashed #ffffff;
-  z-index: 2;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.slot {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1.5px solid var(--dark-green);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 3;
-  padding: 2px 4px;
-}
-
-.player-info {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.player-photo-wrap {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.player-name {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--text-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.score-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 3px;
-}
-
-.score-val {
-  font-weight: 800;
-  font-size: 0.88rem;
-  color: var(--dark-green);
-  min-width: 16px;
-  text-align: center;
-  user-select: none;
-}
-
-.score-btn {
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  width: 22px;
-  height: 22px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-}
-
-.score-minus {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.score-plus {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.team-label {
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.72rem;
-  color: var(--dark-green);
-  margin: 3px 0;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-button {
-  border: none;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-}
-
-button:active {
-  opacity: 0.85;
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-button:disabled:active {
-  opacity: 0.45;
-}
-
-.full-width-btn {
-  width: 100%;
-  margin-top: 4px;
-}
-
-.small-btn {
-  padding: 3px 8px;
-  font-size: 0.72rem;
-}
-
-.court-actions-bar {
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
-}
-
-.court-actions-bar button {
-  flex: 1;
-}
-
-.btn-primary { background: var(--mid-green); color: #ffffff; }
-.btn-secondary { background: var(--mid-green); color: #ffffff; }
-.btn-danger { background: var(--danger-red); color: #ffffff; }
-.btn-danger-light { background: #ffcdd2; color: #880e4f; }
-.btn-warning { background: #ffe082; color: #4e342e; }
-.btn-play { background: #ef6c00; color: #ffffff; }
-
-/* ---------------------------------------------------------
-   Match timer — shown above the SAVE button once PLAY has
-   been pressed; ticks live and is visible to viewers too.
---------------------------------------------------------- */
-.match-timer {
-  text-align: center;
-  font-weight: 800;
-  font-size: 0.95rem;
-  color: var(--dark-green);
-  margin: 2px 0 4px;
-  letter-spacing: 0.4px;
-}
-
-.requeue-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #ffffff;
-  padding: 5px 8px;
-  margin-bottom: 2px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.requeue-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.requeue-left span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------
-   Match history — winner line on top, VS in the middle,
-   loser line on the bottom, with the winning team's two
-   photos anchored to the right.
---------------------------------------------------------- */
-.history-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.history-content {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.history-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-line {
-  font-size: 0.76rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-line.winner-line {
-  color: var(--text-dark);
-  font-weight: 700;
-}
-
-.history-vs {
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: #f9a825;
-  margin: 1px 0;
-}
-
-.history-photos {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.history-time {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-/* Toast notification (replaces alert() popups on mobile) */
-.toast {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translate(-50%, 20px);
-  max-width: 90%;
-  background: var(--dark-green);
-  color: #ffffff;
-  padding: 9px 16px;
-  border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-align: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-  z-index: 50;
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-.toast-error {
-  background: var(--danger-red);
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: Viewer mode — hides every control a spectator
-   shouldn't touch, while leaving names, photos, scores, and
-   history fully visible and live-updating.
---------------------------------------------------------- */
-body.viewer-mode .input-row,
-body.viewer-mode .action-row,
-body.viewer-mode .court-actions-bar,
-body.viewer-mode .full-width-btn,
-body.viewer-mode .score-btn,
-body.viewer-mode .queue-del-btn,
-body.viewer-mode .requeue-row button,
-body.viewer-mode #clearHistoryBtn {
-  display: none !important;
-}
-
-/* ---------------------------------------------------------
-   Tablet / desktop layout (iPad and up) — the phone layout
-   above is untouched; this only kicks in on wider screens.
---------------------------------------------------------- */
-@media (min-width: 700px) {
-  .app-frame {
-    max-width: 900px;
-    width: 92%;
-    height: 90dvh;
-    max-height: 940px;
-    border-radius: 22px;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
-  }
-
-  header {
-    padding-top: 16px;
-    border-radius: 22px 22px 0 0;
-  }
-
-  header h1 {
-    font-size: 1.5rem;
-  }
-
-  .container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "viewer viewer"
-      "queue court"
-      "actions actions"
-      "finished history";
-    gap: 14px;
-    padding: 16px;
-  }
-
-  .viewer-badge { grid-area: viewer; }
-  .container > section:nth-of-type(1) { grid-area: queue; }
-  .container > section:nth-of-type(2) { grid-area: court; }
-  .container > section:nth-of-type(3) { grid-area: actions; }
-  .container > section:nth-of-type(4) { grid-area: finished; }
-  .container > section:nth-of-type(5) { grid-area: history; }
-
-  .scroll-list {
-    max-height: 140px;
-  }
-
-  .court-visual {
-    height: 220px;
-  }
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b5e20">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pickle Jam">
+  <title>Pickle Jam</title>
+  <link rel="stylesheet" href="styles.css?v=19">
+  <script>
+    // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
+    // address bar shows/hides. This keeps the app frame sized to what's
+    // actually visible, with 100dvh in the CSS as the modern first choice.
+    function setViewportHeightVar() {
+      document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+    }
+    setViewportHeightVar();
+    window.addEventListener('resize', setViewportHeightVar);
+    window.addEventListener('orientationchange', setViewportHeightVar);
+  </script>
+</head>
+<body>
+  <div class="app-frame">
+   <header>
+      <h1>Pickle Jam</h1>
+      <p>Queue</p>
+
+      <!-- SYNC VISIBILITY: always-on "Synced Xs ago" line + manual refresh
+           icon, for both Host and Viewer. Exists so a broken sync is
+           something you can SEE on screen (on any phone, no dev tools
+           needed) instead of something that silently looks fine while
+           quietly showing stale data. script.js keeps this text current. -->
+      <p id="syncStatusText" class="sync-status-text">Not synced yet</p>
+
+      <div class="header-icon-row">
+        <button type="button" id="forceSyncBtn" class="qr-toggle-btn" hidden aria-label="Force sync now" title="Force sync now">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+
+        <!-- MULTIPLAYER: mini QR toggle (Host only) — opens the spectator
+             QR code in a modal. Hidden by default; script.js reveals it
+             once a room exists. -->
+        <button type="button" id="qrToggleBtn" class="qr-toggle-btn" hidden aria-label="Show spectator QR code">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+            <line x1="14" y1="14" x2="14" y2="21"></line>
+            <line x1="21" y1="14" x2="21" y2="21"></line>
+            <line x1="17.5" y1="14" x2="17.5" y2="17.5"></line>
+            <line x1="14" y1="17.5" x2="21" y2="17.5"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- SYNC VISIBILITY: persistent (not auto-dismissing) error banner.
+         Shown only when a Firebase snapshot fails to apply — see
+         applyState()/showSyncError() in script.js. Unlike a toast, this
+         stays up until sync recovers, so it can't be missed. -->
+    <div id="syncErrorBanner" class="sync-error-banner" hidden></div>
+
+    <main class="container">
+
+      <!-- MULTIPLAYER: Viewer badge (Viewer mode only) -->
+      <div id="viewerBadge" class="viewer-badge" hidden>
+        🔴 Live View — Room <span id="viewerRoomCode"></span>
+      </div>
+
+      <!-- Waiting Queue -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Waiting Queue</h2>
+          <span id="queueCount">0 players</span>
+        </div>
+        <div class="input-row">
+          <label class="photo-picker" id="photoPickerLabel" for="photoInput">
+            <img id="photoPreview" class="photo-preview" alt="">
+            <span id="photoPickerIcon" class="photo-picker-icon">📷</span>
+            <input type="file" id="photoInput" accept="image/*" hidden>
+          </label>
+          <input type="text" id="nameInput" placeholder="Enter player name" maxlength="24">
+          <button id="addBtn" class="btn-primary">+ Add</button>
+        </div>
+        <ul id="queueList" class="scroll-list"></ul>
+        <div class="action-row">
+          <button id="removeBtn" class="btn-danger-light">Remove Last</button>
+          <button id="clearQueueBtn" class="btn-danger">Clear Queue</button>
+        </div>
+      </section>
+
+      <!-- Court Section -->
+      <section class="card court-card">
+        <h2>Court</h2>
+        <div class="team-label" id="team1Label">Team 1</div>
+
+        <div class="court-visual">
+          <div class="kitchen-zone"></div>
+          <div class="court-net"></div>
+
+          <div class="slot" id="slot0">
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(0, -1)">-</button>
+              <span class="score-val" id="score0">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(0, 1)">+</button>
+            </div>
+          </div>
+
+          <div class="slot" id="slot1">
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(1, -1)">-</button>
+              <span class="score-val" id="score1">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(1, 1)">+</button>
+            </div>
+          </div>
+
+          <div class="slot" id="slot2">
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(2, -1)">-</button>
+              <span class="score-val" id="score2">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(2, 1)">+</button>
+            </div>
+          </div>
+
+          <div class="slot" id="slot3">
+            <div class="player-info">
+              <div class="player-photo-wrap"></div>
+              <span class="player-name">— —</span>
+            </div>
+            <div class="score-control">
+              <button class="score-btn score-minus" onclick="adjustScore(3, -1)">-</button>
+              <span class="score-val" id="score3">0</span>
+              <button class="score-btn score-plus" onclick="adjustScore(3, 1)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="team-label" id="team2Label">Team 2</div>
+        <div class="match-timer" id="matchTimer" hidden>⏱ 00:00</div>
+        <button id="playBtn" class="btn-play full-width-btn" disabled>▶ P L A Y</button>
+        <button id="saveBtn" class="btn-primary full-width-btn" disabled>S A V E</button>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="court-actions-bar">
+        <button id="shuffleBtn" class="btn-secondary">Shuffle</button>
+        <button id="fillCourtBtn" class="btn-primary">Fill Court</button>
+        <button id="resetCourtBtn" class="btn-warning" disabled>Reset Court</button>
+      </section>
+
+      <!-- Recently Finished Players -->
+      <section class="card">
+        <h2>Recently Finished</h2>
+        <div id="finishedContainer" class="scroll-list"></div>
+      </section>
+
+      <!-- Match History -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Match History</h2>
+          <button id="clearHistoryBtn" class="btn-danger-light small-btn">Clear</button>
+        </div>
+        <div id="historyList" class="scroll-list"></div>
+      </section>
+    </main>
+
+    <!-- ============================================================
+         MULTIPLAYER: QR modal (Host only) — hidden until qrToggleBtn
+         in the header is tapped. Same QR/room-code/copy-link content
+         as before, just presented as a popup instead of always-on.
+    ============================================================= -->
+    <div class="qr-modal-overlay" id="qrModalOverlay" hidden>
+      <div class="qr-modal">
+        <button type="button" id="qrModalCloseBtn" class="qr-modal-close" aria-label="Close">&times;</button>
+        <h2>Spectator Link</h2>
+        <div id="qrcodeContainer" class="qrcode-container"></div>
+        <p class="room-code-text">Room Code: <strong id="roomCodeText"></strong></p>
+        <button type="button" id="copyLinkBtn" class="btn-secondary small-btn copy-link-btn">Copy Viewer Link</button>
+      </div>
+    </div>
+
+    <!-- CONNECTION STATUS: small pill that appears when the live link
+         to Firebase drops, so a stuck/frozen tab is visible instead of
+         silently showing stale data. script.js toggles this. -->
+    <div id="connectionBanner" class="connection-banner" hidden>
+      ⚠️ Reconnecting…
+    </div>
+  </div>
+
+  <!-- ==============================================================
+       MULTIPLAYER: External libraries — load BEFORE script.js.
+
+       1) Firebase compat SDKs (App + Realtime Database). The "compat"
+          build is used so no bundler/ES-modules setup is needed on
+          GitHub Pages — everything hangs off the global `firebase`
+          object, same as the old <script>-tag Firebase examples.
+       2) QRCode.js (davidshimjs) — renders the spectator QR code
+          into #qrcodeContainer via `new QRCode(el, { text, ... })`.
+  =============================================================== -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script src="script.js?v=25"></script>
+</body>
+</html>
