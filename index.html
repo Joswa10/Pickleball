@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Pickle Jam">
   <title>Pickle Jam</title>
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
   <script>
     // Real mobile browsers (esp. iOS Safari) lie about 100vh because the
     // address bar shows/hides. This keeps the app frame sized to what's
@@ -27,21 +27,44 @@
       <h1>Pickle Jam</h1>
       <p>Queue</p>
 
-      <!-- MULTIPLAYER: mini QR toggle (Host only) — opens the spectator
-           QR code in a modal. Hidden by default; script.js reveals it
-           once a room exists. -->
-      <button type="button" id="qrToggleBtn" class="qr-toggle-btn" hidden aria-label="Show spectator QR code">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-          <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-          <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-          <line x1="14" y1="14" x2="14" y2="21"></line>
-          <line x1="21" y1="14" x2="21" y2="21"></line>
-          <line x1="17.5" y1="14" x2="17.5" y2="17.5"></line>
-          <line x1="14" y1="17.5" x2="21" y2="17.5"></line>
-        </svg>
-      </button>
+      <!-- SYNC VISIBILITY: always-on "Synced Xs ago" line + manual refresh
+           icon, for both Host and Viewer. Exists so a broken sync is
+           something you can SEE on screen (on any phone, no dev tools
+           needed) instead of something that silently looks fine while
+           quietly showing stale data. script.js keeps this text current. -->
+      <p id="syncStatusText" class="sync-status-text">Not synced yet</p>
+
+      <div class="header-icon-row">
+        <button type="button" id="forceSyncBtn" class="qr-toggle-btn" hidden aria-label="Force sync now" title="Force sync now">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+
+        <!-- MULTIPLAYER: mini QR toggle (Host only) — opens the spectator
+             QR code in a modal. Hidden by default; script.js reveals it
+             once a room exists. -->
+        <button type="button" id="qrToggleBtn" class="qr-toggle-btn" hidden aria-label="Show spectator QR code">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+            <line x1="14" y1="14" x2="14" y2="21"></line>
+            <line x1="21" y1="14" x2="21" y2="21"></line>
+            <line x1="17.5" y1="14" x2="17.5" y2="17.5"></line>
+            <line x1="14" y1="17.5" x2="21" y2="17.5"></line>
+          </svg>
+        </button>
+      </div>
     </header>
+
+    <!-- SYNC VISIBILITY: persistent (not auto-dismissing) error banner.
+         Shown only when a Firebase snapshot fails to apply — see
+         applyState()/showSyncError() in script.js. Unlike a toast, this
+         stays up until sync recovers, so it can't be missed. -->
+    <div id="syncErrorBanner" class="sync-error-banner" hidden></div>
 
     <main class="container">
 
@@ -196,6 +219,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-  <script src="script.js?v=24"></script>
+  <script src="script.js?v=25"></script>
 </body>
 </html>
