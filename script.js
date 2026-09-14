@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-viewer-scope-2026-09-14c';
+const BUILD_ID = 'pickle-jam-undefined-photo-fix-2026-09-14d';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -27,6 +27,40 @@ function normalizeCourtPlayers(value) {
     for (let i = 0; i < 4; i++) result[i] = value[i] ?? value[String(i)] ?? null;
   }
   return result;
+}
+
+// -----------------------------------------------------------------------
+// THE ROOT CAUSE of "sync just stops working" (refresh loses history,
+// viewer freezes, etc.):
+//
+// Firebase treats writing `null` as "delete this key" — including for a
+// key nested inside an object inside an array. So a player added WITHOUT
+// a photo gets written as `photo: null`, and Firebase silently drops that
+// `photo` key from storage entirely. The next time that data comes back
+// down through a snapshot, the player object has no `photo` property at
+// all — so reading `player.photo` in JS now gives `undefined`, not `null`.
+//
+// Later, saveMatch() rebuilds each player as
+// `{ name: p.name, photo: p.photo, score }` — and if p.photo is that
+// `undefined`, the object now explicitly carries `photo: undefined`.
+// Firebase's client SDK REJECTS this synchronously, before the write even
+// leaves the browser ("values argument contains undefined..."). Because
+// it throws synchronously instead of rejecting a promise, the existing
+// `.then()/.catch()/.finally()` chain on that update() call never even
+// attaches — so `pendingWrites` (see below) gets stuck above 0 forever,
+// which makes BOTH the live listener and every future resync poll skip
+// applying new data for the rest of the session. That matches every
+// symptom reported: history looking frozen, viewers not updating, and a
+// refresh appearing to "lose" data that's actually just stuck un-synced.
+//
+// Fix: run every payload through this before it ever reaches Firebase.
+// JSON.stringify already implements exactly the semantics Firebase wants —
+// `undefined` inside an object becomes a dropped key, and `undefined`
+// inside an array becomes `null` — so a stringify/parse round-trip is a
+// simple, thorough way to guarantee no `undefined` can ever sneak into a
+// write, regardless of which code path constructed the object.
+function sanitizeForFirebase(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 let waitingQueue = [];       // array of { name, photo }
@@ -447,34 +481,75 @@ function getCurrentScores() {
 function syncStateToFirebase() {
   if (!isHost || !roomRef) return;
 
+  // Build the plain-data part of the payload and strip any `undefined`
+  // out of it (see the big comment on sanitizeForFirebase above — this is
+  // what actually fixes the "sync freezes forever" bug). ServerValue
+  // sentinels below are added AFTER sanitizing, untouched, since they're
+  // special objects Firebase itself interprets, not plain data.
+  const payload = sanitizeForFirebase({
+    waitingQueue,
+    courtPlayers,
+    // NOTE: Firebase treats `null` object-property values as "delete
+    // this key" (and an all-null array collapses away too). Writing an
+    // explicit sentinel (0 = "not running") instead of `null` means
+    // "no active match" is always a real, present value in the DB
+    // rather than an implicit absence that every reader has to guess
+    // the meaning of.
+    matchStartTime: matchStartTime ?? 0,
+    // Human-readable mirror of matchStartTime, purely for glancing at
+    // the Firebase console / debug log — applyState() below still
+    // derives real behavior from matchStartTime and courtPlayers, not
+    // this string, since those are the actual source of truth.
+    matchStatus: matchStartTime !== null ? 'in_progress' : 'idle',
+    scores: getCurrentScores(),
+    matchHistory,
+    recentlyFinished,
+  });
+
   pendingWrites++;
 
-  roomRef
-    .update({
-      waitingQueue,
-      courtPlayers,
-      // NOTE: Firebase treats `null` object-property values as "delete
-      // this key" (and an all-null array collapses away too). Writing an
-      // explicit sentinel (0 = "not running") instead of `null` means
-      // "no active match" is always a real, present value in the DB
-      // rather than an implicit absence that every reader has to guess
-      // the meaning of.
-      matchStartTime: matchStartTime ?? 0,
-      // Human-readable mirror of matchStartTime, purely for glancing at
-      // the Firebase console / debug log — applyState() below still
-      // derives real behavior from matchStartTime and courtPlayers, not
-      // this string, since those are the actual source of truth.
-      matchStatus: matchStartTime !== null ? 'in_progress' : 'idle',
-      scores: getCurrentScores(),
-      matchHistory,
-      recentlyFinished,
+  // GUARD: Firebase's SDK can throw SYNCHRONOUSLY (not a rejected promise)
+  // when a write is malformed, which would otherwise skip .then/.catch/
+  // .finally entirely and leave pendingWrites stuck above 0 forever —
+  // freezing all future sync for the rest of the session. The sanitize
+  // step above should make that specific failure impossible now, but this
+  // try/catch is a second, independent safety net: no future bad value,
+  // from any code path, can ever again wedge the app this way.
+  let updatePromise;
+  try {
+    updatePromise = roomRef.update({
+      ...payload,
       // Kept purely as a debug counter you can eyeball in the Firebase
       // console's Data tab to confirm writes are actually landing — NOT
       // used to gate whether an incoming snapshot gets applied (see the
       // big comment on `pendingWrites` near the top of this file for why).
       revision: firebase.database.ServerValue.increment(1),
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
-    })
+    });
+  } catch (err) {
+    console.error('Firebase update() threw synchronously — bad payload:', err, payload);
+    showToast(`Save failed — not synced to viewers (${err.message})`, true);
+    pendingWrites = Math.max(0, pendingWrites - 1);
+    return;
+  }
+
+  // SAFETY NET: if this write somehow never resolves or rejects (a genuine
+  // network hang, not a rejected promise), this guarantees pendingWrites
+  // still gets released after 10s instead of blocking all future sync for
+  // the rest of the session. `settled` stops this and the real
+  // .finally() below from BOTH decrementing if the promise resolves late
+  // (after the timeout already fired) — since multiple writes can be in
+  // flight at once, double-decrementing here would incorrectly release
+  // some other write's still-pending lock.
+  let settled = false;
+  const pendingWriteSafetyTimer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    console.warn('Firebase write taking unusually long (>10s) — releasing the sync lock as a safety net');
+    pendingWrites = Math.max(0, pendingWrites - 1);
+  }, 10000);
+
+  updatePromise
     .then(() => {
       // DEBUG: confirms the write actually reached Firebase and what it
       // carried. If matchHistory/recentlyFinished show 0 here right after
@@ -496,6 +571,9 @@ function syncStateToFirebase() {
       showToast(`Save failed — not synced to viewers${reason}`, true);
     })
     .finally(() => {
+      clearTimeout(pendingWriteSafetyTimer);
+      if (settled) return;
+      settled = true;
       pendingWrites = Math.max(0, pendingWrites - 1);
     });
 }
