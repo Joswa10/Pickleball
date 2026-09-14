@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14b';
+const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14c';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -801,7 +801,7 @@ function addPlayerToQueue() {
     return;
   }
 
-  waitingQueue.push({ name, photo: pendingPhoto });
+  waitingQueue.push({ name, photo: pendingPhoto ?? null });
   nameInput.value = '';
   nameInput.classList.remove('input-error');
   resetPhotoPicker();
@@ -998,11 +998,15 @@ function saveMatch() {
   const duration = matchStartTime !== null ? formatDuration(Date.now() - matchStartTime) : null;
 
   const matchRecord = {
-    players: courtPlayers.map((p, i) => ({ name: p.name, photo: p.photo, score: scores[i] })),
+    players: courtPlayers.map((p, i) => ({
+      name: p.name,
+      photo: p.photo ?? null,
+      score: scores[i]
+    })),
     team1Total,
     team2Total,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    duration,
+    duration: duration ?? null,
   };
 
   matchHistory.unshift(matchRecord);
@@ -1016,7 +1020,7 @@ function saveMatch() {
   }
   // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
   recentlyFinished = recentlyFinished.concat(
-    courtPlayers.map((p) => ({ name: p.name, photo: p.photo }))
+    courtPlayers.map((p) => ({ name: p.name, photo: p.photo ?? null }))
   );
 
   renderHistory();
