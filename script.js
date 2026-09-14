@@ -8,20 +8,19 @@ let pendingPhoto = null;     // data URL for the photo about to be added
 let matchStartTime = null;   // timestamp (ms) the current match's timer started, or null if not running
 let matchTimerInterval = null; // setInterval handle for the live ticking display
 
-// Monotonic guard against ever applying a snapshot older than what we
-// already have. IMPORTANT: this is a server-resolved atomic counter
-// (`revision`), NOT a wall-clock timestamp. A timestamp-based guard is
-// vulnerable to the Firebase JS SDK's "optimistic local echo" — the
-// writer's own `.on('value')` listener fires immediately with a
-// *client-estimated* ServerValue.TIMESTAMP before the real, server
-// -committed value round-trips back. If that local estimate overshoots
-// (clock drift / latency), it can permanently latch in a value higher
-// than every real timestamp that follows, silently blackholing every
-// future update on that client. `ServerValue.increment(1)` is resolved
-// atomically against the stored value by the database server itself, so
-// there's no local estimate to race and no way for it to be spoofed high.
-let lastAppliedRevision = -1;  // -1 so the very first snapshot (revision 0 or 1) is never rejected
-let pendingWrites = 0;         // number of our own writes still in flight to Firebase
+// Guards against applying a Firebase snapshot that arrived while one of
+// OUR OWN writes is still in flight (the JS SDK can briefly deliver a
+// partially-merged local echo of a multi-key update() before the real
+// server-committed value round-trips back). This is the only staleness
+// protection needed: Firebase already guarantees `.on('value')` and
+// `.once('value')` deliver each client its own consistent, correctly
+// ordered view of a location, so there's no need for (and no safe way to
+// build) a manual "is this snapshot newer than the last one?" counter on
+// top of that — a previous version of this file tried exactly that with
+// a `revision` field, and a single bad/racy value could permanently
+// freeze a viewer on a stale snapshot forever, which is the bug that was
+// happening in production. Don't reintroduce that pattern.
+let pendingWrites = 0; // number of our own writes still in flight to Firebase
 
 const nameInput = document.getElementById('nameInput');
 const addBtn = document.getElementById('addBtn');
@@ -225,19 +224,10 @@ function initMultiplayer() {
         roomRef.on(
           'value',
           (liveSnapshot) => {
-            // FIX: while one of our own writes is still in flight, the
-            // Firebase JS SDK can fire this listener with a local,
-            // optimistic "echo" snapshot that hasn't been fully merged
-            // with the multi-key update() payload yet (e.g. it can be
-            // missing matchHistory/recentlyFinished for an instant).
-            // applyState() would coerce those missing keys to [] and,
-            // on the very next syncStateToFirebase() call, write that
-            // empty array back to Firebase — which deletes the node
-            // entirely. Skipping applyState() here until our write
-            // settles (see pendingWrites in syncStateToFirebase) avoids
-            // ever latching in that incomplete snapshot on the writer's
-            // own client. forceResync()/the poll will pick up the real,
-            // server-committed value right after pendingWrites hits 0.
+            // Skip while one of our own writes is still in flight — see the
+            // comment on `pendingWrites` at the top of this file. Once the
+            // write resolves, the very next live event (or the resync poll)
+            // will carry the authoritative post-write value.
             if (pendingWrites > 0) return;
             const liveData = liveSnapshot.val();
             if (liveData) applyState(liveData);
@@ -283,12 +273,9 @@ function initMultiplayer() {
         roomRef.on(
           'value',
           (liveSnapshot) => {
-            // FIX: same guard as the host branch above. Viewers never set
-            // pendingWrites themselves (they never call
-            // syncStateToFirebase), so in practice this is a no-op for
-            // viewers today — but keeping both branches identical means
-            // this stays correct if viewer-side writes are ever added,
-            // and there's only one code path to reason about.
+            // Viewers never call syncStateToFirebase(), so pendingWrites is
+            // always 0 here — every live snapshot Firebase sends is applied
+            // immediately, in the order Firebase delivers it.
             if (pendingWrites > 0) return;
             const liveData = liveSnapshot.val();
             if (liveData) applyState(liveData);
@@ -371,12 +358,11 @@ function syncStateToFirebase() {
       scores: getCurrentScores(),
       matchHistory,
       recentlyFinished,
-      // Atomic, server-resolved counter — see the comment on
-      // `lastAppliedRevision` above for why this replaces a timestamp
-      // as the staleness guard.
+      // Kept purely as a debug counter you can eyeball in the Firebase
+      // console's Data tab to confirm writes are actually landing — NOT
+      // used to gate whether an incoming snapshot gets applied (see the
+      // big comment on `pendingWrites` near the top of this file for why).
       revision: firebase.database.ServerValue.increment(1),
-      // Kept for display/debugging only — no longer used to gate whether
-      // a snapshot gets applied.
       updatedAt: firebase.database.ServerValue.TIMESTAMP,
     })
     .then(() => {
@@ -407,14 +393,9 @@ function syncStateToFirebase() {
 // FIREBASE -> UI: rebuilds local state + re-renders from a Firebase
 // snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes,
 // and also whenever forceResync() pulls a fresh snapshot after a
-// reconnect/tab-restore/poll.
-//
-// GUARDED: every write increments `revision` atomically on the server
-// (see syncStateToFirebase). If an incoming snapshot's `revision` is
-// older than the newest one we've already applied, it's ignored outright.
-// Without this, a stale read (from the periodic poll, a lingering second
-// tab on the same room, or a listener catching up after being throttled)
-// could silently overwrite a fresh save/reset with old data.
+// reconnect/tab-restore/poll. Every snapshot Firebase delivers here is
+// applied as-is — see the comment on `pendingWrites` near the top of this
+// file for why there's deliberately no additional "is this stale?" check.
 function applyState(state) {
   // DEBUG: confirms whether this client (host or viewer) is actually
   // receiving Firebase snapshots at all, and what they contain. If a
@@ -424,15 +405,6 @@ function applyState(state) {
   // rather than anything in the state-application logic below. Safe to
   // remove once things are confirmed working.
   console.log('Firebase snapshot received:', state);
-
-  const incomingRevision = typeof state.revision === 'number' ? state.revision : 0;
-  if (incomingRevision < lastAppliedRevision) {
-    console.warn(
-      `Ignoring stale room snapshot (revision ${incomingRevision} is older than ${lastAppliedRevision})`
-    );
-    return;
-  }
-  lastAppliedRevision = incomingRevision;
 
   waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
 
