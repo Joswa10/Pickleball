@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-undefined-photo-fix-2026-09-14d';
+const BUILD_ID = 'pickle-jam-viewer-history-restored-2026-09-14e';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -624,16 +624,12 @@ function applyState(state) {
       document.getElementById(`score${i}`).textContent = scores[i] || 0;
     }
 
-    // VIEWER SCOPE: a spectator only ever sees the Waiting Queue and the
-    // Court (the sections are hidden outright in CSS — see
-    // body.viewer-mode .host-only-section in styles.css). Skipping the
-    // render here too means a viewer never even builds the Recently
-    // Finished / Match History DOM — cheaper, and it's simply not that
-    // client's data to display.
-    if (isHost) {
-      renderRecentlyFinished();
-      renderHistory();
-    }
+    // Visible to Host and Viewer alike — the "sync freezes forever" bug
+    // that used to make this look broken on the viewer was a Firebase
+    // write-layer issue (see sanitizeForFirebase above), not a visibility
+    // one, and that's now fixed regardless of who's looking at the data.
+    renderRecentlyFinished();
+    renderHistory();
 
     // Match timer: derived from a shared timestamp so it stays correct across
     // refreshes and shows the same live count for the host and any viewers.
@@ -721,10 +717,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderQueue();
   renderCourt();
-  if (isHost) {
-    renderRecentlyFinished();
-    renderHistory();
-  }
+  renderRecentlyFinished();
+  renderHistory();
   updateCourtButtons();
   updateTeamLabels();
 
