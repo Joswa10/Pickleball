@@ -1,896 +1,1433 @@
-:root {
-  --dark-green: #2d5a52;   /* Deep frosty teal for the top header */
-  --mid-green: #3b7a6f;    /* Smooth sage-teal for buttons */
-  --light-green: #b2d8d0;  /* Pale mint for card borders & input outlines */
-  --pale-green: #eaf4f2;   /* Very light frosty green for the main app background */
-  
-  /* Keep the rest of your variables the same below */
- --court-blue: #304049;    /* Dark slate blue for the main court playing area */
-  --kitchen-blue: #5b6e68;
-  --text-dark: #1c2e2a;
-  --text-muted: #527068;
-  --danger-red: #c62828;
-  --vh: 1vh;
+const EMPTY_SLOT = '— —';
+
+// VERIFICATION: bump this string every time you deploy. Open the console
+// (Cmd+Option+J) on BOTH the host and viewer tabs and confirm this exact
+// line prints on both before troubleshooting anything else — if one tab
+// shows an older/missing build tag, that tab is running stale cached
+// code, not the file you think you just pushed.
+const BUILD_ID = 'pickle-jam-history-copy-2026-09-14f';
+console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
+
+
+// Firebase RTDB internally stores everything as a tree, not real arrays.
+// When you write a JS array, the SDK converts it to integer-keyed nodes —
+// and when reading it back, it only reconstitutes a real JS array if the
+// keys look "array-like" (dense, starting at 0). An array with `null`
+// holes (exactly what courtPlayers looks like after every Save/Reset —
+// e.g. [null, null, null, null]) can come back as a plain OBJECT instead
+// (e.g. {} or {"2": {...}}), not an array. The old code only handled the
+// array case, so a Save/Reset could silently fail to round-trip correctly
+// depending on which slots were empty. This normalizes either shape into
+// a real 4-element array regardless.
+function normalizeCourtPlayers(value) {
+  const result = [null, null, null, null];
+  if (Array.isArray(value)) {
+    for (let i = 0; i < 4; i++) result[i] = value[i] ?? null;
+  } else if (value && typeof value === 'object') {
+    for (let i = 0; i < 4; i++) result[i] = value[i] ?? value[String(i)] ?? null;
+  }
+  return result;
 }
 
-* {
-  box-sizing: border-box;
-  -webkit-font-smoothing: antialiased;
-  touch-action: manipulation;
+// -----------------------------------------------------------------------
+// THE ROOT CAUSE of "sync just stops working" (refresh loses history,
+// viewer freezes, etc.):
+//
+// Firebase treats writing `null` as "delete this key" — including for a
+// key nested inside an object inside an array. So a player added WITHOUT
+// a photo gets written as `photo: null`, and Firebase silently drops that
+// `photo` key from storage entirely. The next time that data comes back
+// down through a snapshot, the player object has no `photo` property at
+// all — so reading `player.photo` in JS now gives `undefined`, not `null`.
+//
+// Later, saveMatch() rebuilds each player as
+// `{ name: p.name, photo: p.photo, score }` — and if p.photo is that
+// `undefined`, the object now explicitly carries `photo: undefined`.
+// Firebase's client SDK REJECTS this synchronously, before the write even
+// leaves the browser ("values argument contains undefined..."). Because
+// it throws synchronously instead of rejecting a promise, the existing
+// `.then()/.catch()/.finally()` chain on that update() call never even
+// attaches — so `pendingWrites` (see below) gets stuck above 0 forever,
+// which makes BOTH the live listener and every future resync poll skip
+// applying new data for the rest of the session. That matches every
+// symptom reported: history looking frozen, viewers not updating, and a
+// refresh appearing to "lose" data that's actually just stuck un-synced.
+//
+// Fix: run every payload through this before it ever reaches Firebase.
+// JSON.stringify already implements exactly the semantics Firebase wants —
+// `undefined` inside an object becomes a dropped key, and `undefined`
+// inside an array becomes `null` — so a stringify/parse round-trip is a
+// simple, thorough way to guarantee no `undefined` can ever sneak into a
+// write, regardless of which code path constructed the object.
+function sanitizeForFirebase(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  height: calc(var(--vh, 1vh) * 100);
-  height: 100dvh;
-  overflow: hidden;
-  position: fixed;
-  inset: 0;
-  overscroll-behavior: none;
-  background-color: #121212;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: var(--text-dark);
-  display: flex;
-  justify-content: center;
-  align-items: center;
+let waitingQueue = [];       // array of { name, photo }
+let courtPlayers = [null, null, null, null]; // each null or { name, photo }
+let matchHistory = [];       // array of { players:[{name,score,photo} x4], team1Total, team2Total, time }
+let recentlyFinished = [];   // array of { name, photo }
+let pendingPhoto = null;     // data URL for the photo about to be added
+let matchStartTime = null;   // timestamp (ms) the current match's timer started, or null if not running
+let matchTimerInterval = null; // setInterval handle for the live ticking display
+
+// Guards against applying a Firebase snapshot that arrived while one of
+// OUR OWN writes is still in flight (the JS SDK can briefly deliver a
+// partially-merged local echo of a multi-key update() before the real
+// server-committed value round-trips back). This is the only staleness
+// protection needed: Firebase already guarantees `.on('value')` and
+// `.once('value')` deliver each client its own consistent, correctly
+// ordered view of a location, so there's no need for (and no safe way to
+// build) a manual "is this snapshot newer than the last one?" counter on
+// top of that — a previous version of this file tried exactly that with
+// a `revision` field, and a single bad/racy value could permanently
+// freeze a viewer on a stale snapshot forever, which is the bug that was
+// happening in production. Don't reintroduce that pattern.
+let pendingWrites = 0; // number of our own writes still in flight to Firebase
+
+const nameInput = document.getElementById('nameInput');
+const addBtn = document.getElementById('addBtn');
+const removeBtn = document.getElementById('removeBtn');
+const clearQueueBtn = document.getElementById('clearQueueBtn');
+const queueList = document.getElementById('queueList');
+const queueCount = document.getElementById('queueCount');
+
+const photoInput = document.getElementById('photoInput');
+const photoPreview = document.getElementById('photoPreview');
+const photoPickerIcon = document.getElementById('photoPickerIcon');
+
+const fillCourtBtn = document.getElementById('fillCourtBtn');
+const resetCourtBtn = document.getElementById('resetCourtBtn');
+const shuffleBtn = document.getElementById('shuffleBtn');
+const saveBtn = document.getElementById('saveBtn');
+const playBtn = document.getElementById('playBtn');
+const matchTimerDisplay = document.getElementById('matchTimer');
+
+const finishedContainer = document.getElementById('finishedContainer');
+const historyList = document.getElementById('historyList');
+const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+const copyHistoryBtn = document.getElementById('copyHistoryBtn');
+
+const team1Label = document.getElementById('team1Label');
+const team2Label = document.getElementById('team2Label');
+
+const connectionBanner = document.getElementById('connectionBanner');
+const syncErrorBanner = document.getElementById('syncErrorBanner');
+const syncStatusText = document.getElementById('syncStatusText');
+const forceSyncBtn = document.getElementById('forceSyncBtn');
+
+/* ===========================================================
+   MULTIPLAYER: Firebase config + Host/Viewer setup
+   -----------------------------------------------------------
+   Replace the placeholder values below with the config object
+   from your Firebase project (Project settings → General →
+   "Your apps" → SDK setup and configuration → Config).
+=========================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBdSMWpqMTYbiRcTzkOZjRC9ue2Ta9zrao",
+  authDomain: "pickle-resjam.firebaseapp.com",
+  databaseURL: "https://pickle-resjam-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pickle-resjam",
+  storageBucket: "pickle-resjam.firebasestorage.app",
+  messagingSenderId: "712164613268",
+  appId: "1:712164613268:web:04cf91dfbcee46ab936881",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const qrToggleBtn = document.getElementById('qrToggleBtn');
+const qrModalOverlay = document.getElementById('qrModalOverlay');
+const qrModalCloseBtn = document.getElementById('qrModalCloseBtn');
+const qrcodeContainer = document.getElementById('qrcodeContainer');
+const roomCodeText = document.getElementById('roomCodeText');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+const viewerBadge = document.getElementById('viewerBadge');
+const viewerRoomCode = document.getElementById('viewerRoomCode');
+
+// MULTIPLAYER: open/close the QR modal from the header icon.
+qrToggleBtn.addEventListener('click', () => {
+  qrModalOverlay.hidden = false;
+});
+qrModalCloseBtn.addEventListener('click', () => {
+  qrModalOverlay.hidden = true;
+});
+qrModalOverlay.addEventListener('click', (e) => {
+  if (e.target === qrModalOverlay) qrModalOverlay.hidden = true; // click outside the card
+});
+
+const urlParams = new URLSearchParams(window.location.search);
+const isViewerMode = urlParams.get('mode') === 'viewer';
+const isHost = !isViewerMode;
+let roomId = urlParams.get('room');
+let roomRef = null;
+
+// HOST PERSISTENCE: a very likely real cause of "my history/timer keeps
+// getting reset" is nothing to do with syncing at all — it's that the
+// host reopened the app WITHOUT the "?room=XXXXXX" URL param (e.g. an
+// "Add to Home Screen" icon that was saved before a room existed, a
+// bookmark to the bare URL, or the query string getting stripped by
+// something in between). With no room id in the URL, the old code always
+// treated that as "brand new session" and generated a fresh random room —
+// which looks exactly like everything being wiped, even though the old
+// room (and all its history) is still sitting untouched in Firebase.
+// Mirroring the room id into localStorage means the HOST's browser can
+// always find its way back to the same room even if the URL doesn't carry
+// it, while a Viewer (who only ever gets a room id from the QR link) is
+// unaffected.
+const HOST_ROOM_STORAGE_KEY = 'pickleJam:hostRoomId';
+if (isHost && !roomId) {
+  try {
+    const savedRoomId = window.localStorage.getItem(HOST_ROOM_STORAGE_KEY);
+    if (savedRoomId) roomId = savedRoomId;
+  } catch (err) {
+    // Private browsing / storage disabled — fall through and generate a
+    // fresh room as before. Not fatal, just loses this particular safety net.
+  }
 }
 
-.app-frame {
-  position: relative;
-  width: 100%;
-  max-width: 414px;
-  height: 100%;
-  height: calc(var(--vh, 1vh) * 100);
-  height: 100dvh;
-  background-color: var(--pale-green);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+// Applied immediately (script runs after the body has parsed) so
+// spectator controls are hidden before the first paint, not after.
+if (isViewerMode) {
+  document.body.classList.add('viewer-mode');
 }
 
-header {
-  position: relative;
-  background-color: var(--dark-green);
-  color: #ffffff;
-  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-  text-align: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: mini QR toggle icon (Host only) — sits in the
-   header's top-right corner; tapping it opens the QR modal.
---------------------------------------------------------- */
-.header-icon-row {
-  position: absolute;
-  top: calc(8px + env(safe-area-inset-top));
-  right: 12px;
-  display: flex;
-  gap: 6px;
-}
-
-.qr-toggle-btn {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.55);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qr-toggle-btn:active {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Manual "force sync" icon spins while a resync request is in flight, so
-   tapping it gives immediate visual feedback instead of feeling inert. */
-.qr-toggle-btn.spinning svg {
-  animation: sync-spin 0.8s linear infinite;
-}
-
-@keyframes sync-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-header h1 {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-header p {
-  margin: 3px 0 0;
-  font-size: 0.72rem;
-  font-weight: 500;
-  opacity: 0.9;
-  letter-spacing: 0.2px;
-}
-
-/* SYNC VISIBILITY: always-on staleness indicator in the header. Turns
-   amber/bold once data hasn't refreshed in a while — see
-   updateSyncIndicator() in script.js — so a stuck sync is visible at a
-   glance instead of quietly showing old data with no signal anything is
-   wrong. */
-.sync-status-text {
-  font-size: 0.68rem !important;
-  opacity: 0.75;
-  transition: color 0.2s ease;
-  text-decoration: underline dotted;
-  cursor: pointer;
-}
-
-.sync-status-text.sync-stale {
-  color: #ffd54f;
-  opacity: 1;
-  font-weight: 700;
-}
-
-/* SYNC VISIBILITY: persistent error banner — stays up until a snapshot
-   applies successfully again (see showSyncError/hideSyncError), unlike a
-   toast which disappears whether or not anyone saw it. */
-.sync-error-banner {
-  background: var(--danger-red, #c0392b);
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 7px 12px;
-  flex-shrink: 0;
-}
-
-.container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom));
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-.card {
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-}
-
-.card h2 {
-  margin: 0 0 6px;
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--dark-green);
-  letter-spacing: 0.2px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.card-header span {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.card-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: QR modal (Host) — white popup with the QR
-   code, room code, and copy-link button. Opened via the
-   mini icon in the header; closed via × or an outside click.
---------------------------------------------------------- */
-.qr-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(20, 30, 28, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 60;
-}
-
-/* FIX: .qr-modal-overlay above sets `display: flex` unconditionally,
-   which has equal specificity to (and loads after) the browser's
-   built-in `[hidden] { display: none }` UA rule — so author CSS wins
-   and the `hidden` attribute set by script.js was being ignored,
-   leaving the modal visible even after the × button set `hidden = true`.
-   This rule restores `hidden` as the authority for this element. */
-.qr-modal-overlay[hidden] {
-  display: none;
-}
-
-.qr-modal {
-  position: relative;
-  width: 100%;
-  max-width: 300px;
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 22px 18px 18px;
-  text-align: center;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
-}
-
-.qr-modal h2 {
-  margin: 0 0 2px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--dark-green);
-}
-
-.qr-modal-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border-radius: 6px;
-  background: #eaf4f2;
-  color: var(--text-dark);
-  font-size: 1.05rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qrcode-container {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0 4px;
-}
-
-.qrcode-container img,
-.qrcode-container canvas {
-  border-radius: 6px;
-  border: 4px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
-}
-
-.room-code-text {
-  margin: 4px 0 8px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
-.room-code-text strong {
-  color: var(--dark-green);
-  letter-spacing: 1.5px;
-  font-size: 0.95rem;
-}
-
-.copy-link-btn {
-  width: 100%;
-}
-
-/* MULTIPLAYER: Viewer badge (Viewer mode) — replaces the room card */
-.viewer-badge {
-  flex-shrink: 0;
-  background: var(--dark-green);
-  color: #ffffff;
-  font-size: 0.74rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 8px 10px;
-  border-radius: 8px;
-  letter-spacing: 0.3px;
+function generateRoomId(length = 6) {
+  // Avoids ambiguous characters (0/O, 1/I) so codes are easy to read/type.
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
 }
 
 /* ---------------------------------------------------------
-   CONNECTION STATUS: shown whenever the Firebase realtime
-   link drops (tab frozen/backgrounded, wifi hiccup, etc.),
-   so it's obvious the screen may be stale instead of the
-   app silently pretending everything is current.
+   MULTIPLAYER: connection watchdog
+   -----------------------------------------------------------
+   The live `.on('value', ...)` listener depends on an open
+   WebSocket. Backgrounding a tab, letting the phone sleep, or
+   Safari restoring a tab from its back-forward cache (bfcache)
+   can silently kill that socket — the page never errors, it
+   just stops receiving updates and freezes on whatever it last
+   saw. A manual refresh doesn't reliably fix this either, since
+   a bfcache restore can skip re-running this script entirely.
+
+   forceResync() does a one-time fetch of the current room state
+   and applies it immediately, regardless of whether the live
+   listener is still healthy. It's called:
+     1) whenever Firebase's own connection-state ref flips back
+        to "connected" (covers real network drops/reconnects)
+     2) on `pageshow` with event.persisted === true (covers
+        Safari/bfcache tab restores)
+     3) whenever the tab becomes visible again (belt-and-
+        suspenders for platforms that don't fire the above)
+     4) on an unconditional poll (covers unfocused-but-visible
+        windows, which Page Visibility never reports as hidden)
 --------------------------------------------------------- */
-.connection-banner {
-  position: absolute;
-  top: calc(8px + env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff3cd;
-  color: #7a5b00;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 5px 12px;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  z-index: 70;
-  letter-spacing: 0.2px;
+function forceResync() {
+  if (!roomRef) return;
+  // If we have a write of our own still in flight, the live listener will
+  // deliver its authoritative (server-resolved) result in a moment — skip
+  // this manual fetch so it can't momentarily show a snapshot from just
+  // before our own change landed.
+  if (pendingWrites > 0) return;
+
+  roomRef
+    .once('value')
+    .then((snapshot) => {
+      const data = snapshot.val();
+      if (data) applyState(data);
+    })
+    .catch((err) => {
+      console.error('Resync failed:', err);
+    });
 }
 
-.input-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
-  align-items: center;
+// Shows a persistent (non-auto-dismissing) red banner when a snapshot fails
+// to apply. Unlike the toast, this stays up until a snapshot succeeds again,
+// so a sync problem can't be missed just because nobody was looking at the
+// screen in the 4.5s a toast is visible.
+function showSyncError(message) {
+  if (!syncErrorBanner) return;
+  syncErrorBanner.textContent = `⚠️ ${message}`;
+  syncErrorBanner.hidden = false;
+}
+function hideSyncError() {
+  if (!syncErrorBanner) return;
+  syncErrorBanner.hidden = true;
 }
 
-.action-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  margin-bottom: 2px;
+// Updates the small "Synced Xs ago" line every second so a frozen Live View
+// (or a frozen host, after a refresh) is visible at a glance instead of
+// silently showing stale data with nothing on screen to indicate that.
+function updateSyncIndicator() {
+  if (!syncStatusText) return;
+  if (lastAppliedAt === null) {
+    syncStatusText.textContent = isViewerMode ? 'Waiting for host…' : 'Not synced yet';
+    return;
+  }
+  const secs = Math.floor((Date.now() - lastAppliedAt) / 1000);
+  let label;
+  if (secs < 2) label = 'Synced just now';
+  else if (secs < 60) label = `Synced ${secs}s ago`;
+  else label = `Synced ${Math.floor(secs / 60)}m ago`;
+  syncStatusText.textContent = label;
+  // A viewer that hasn't heard from Firebase in a while despite the 4s poll
+  // almost certainly has a real problem (stale cache, dead connection) —
+  // flag it visibly rather than quietly showing old data as if it's current.
+  if (secs > 15) {
+    syncStatusText.classList.add('sync-stale');
+  } else {
+    syncStatusText.classList.remove('sync-stale');
+  }
 }
 
-.action-row button {
-  flex: 1;
+const RESYNC_POLL_MS = 4000;
+
+function setupConnectionWatchdog() {
+  // Firebase's built-in "am I connected right now" signal. Fires true on
+  // initial connect AND on every reconnect after a drop — that second case
+  // is exactly when a stale screen needs a hard refresh of the data.
+  firebase
+    .database()
+    .ref('.info/connected')
+    .on('value', (snap) => {
+      const connected = snap.val() === true;
+      if (connectionBanner) connectionBanner.hidden = connected;
+      if (connected) forceResync();
+    });
+
+  // Safari (and some other browsers) can restore a tab from bfcache
+  // without re-running this script or re-opening the socket. `pageshow`
+  // with `persisted: true` is the signal that this just happened.
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) forceResync();
+  });
+
+  // Re-sync whenever the tab regains visibility (covers tab-switch cases).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') forceResync();
+  });
+
+  // HARD FALLBACK: none of the signals above fire when a window is simply
+  // unfocused-but-still-visible (e.g. two separate Chrome windows sitting
+  // side by side) — the Page Visibility API only reports "hidden" for a
+  // minimized/switched-away tab, not an unfocused window. Some browsers
+  // still quietly throttle or drop the realtime socket in that state with
+  // no event at all to catch. An unconditional poll sidesteps all of that:
+  // every few seconds, just ask Firebase for the current truth and apply
+  // it. Cheap for an app this size, and makes staleness a non-issue
+  // regardless of which window/tab/OS quirk is in play.
+  setInterval(forceResync, RESYNC_POLL_MS);
+
+  // Keeps the "Synced Xs ago" text moving even when no new snapshot has
+  // arrived — that's exactly the case it exists to reveal.
+  setInterval(updateSyncIndicator, 1000);
+  updateSyncIndicator();
 }
 
-input[type="text"] {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1.5px solid var(--light-green);
-  border-radius: 6px;
-  font-size: 16px; /* Prevents auto-zoom on iOS focus */
-  font-weight: 500;
-  color: var(--text-dark);
-  outline: none;
-  transition: border-color 0.15s ease;
+function initMultiplayer() {
+  if (isHost) {
+    if (!roomId) {
+      roomId = generateRoomId();
+    }
+    // Keep the room id in BOTH the URL (so the address bar/share sheet is
+    // correct) AND localStorage (so it survives even if the URL param is
+    // ever missing — see the HOST_ROOM_STORAGE_KEY comment above). This
+    // runs whether roomId was just generated or was recovered from the
+    // URL/localStorage above, so the two always stay in sync.
+    const newUrl = `${window.location.pathname}?room=${roomId}`;
+    window.history.replaceState({}, '', newUrl);
+    try {
+      window.localStorage.setItem(HOST_ROOM_STORAGE_KEY, roomId);
+    } catch (err) {
+      // Private browsing / storage disabled — non-fatal, see above.
+    }
+
+    roomRef = db.ref(`rooms/${roomId}`);
+    renderRoomBar();
+
+    // Read the room's existing data ONCE, first, and only decide what to
+    // do once that finishes. This avoids a race between the live 'on'
+    // listener and the one-time "does this room exist yet?" check, which
+    // could otherwise wipe Match History / Recently Finished on refresh.
+    roomRef
+      .once('value')
+      .then((snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          applyState(data); // existing room — resume exactly where it left off
+        } else {
+          syncStateToFirebase(); // brand-new room — seed it with the current (empty) state
+        }
+
+        // Only attach the ongoing listener once the initial load/seed above
+        // has resolved, so it can never race that step.
+        roomRef.on(
+          'value',
+          (liveSnapshot) => {
+            // Skip while one of our own writes is still in flight — see the
+            // comment on `pendingWrites` at the top of this file. Once the
+            // write resolves, the very next live event (or the resync poll)
+            // will carry the authoritative post-write value.
+            if (pendingWrites > 0) return;
+            const liveData = liveSnapshot.val();
+            if (liveData) applyState(liveData);
+          },
+          (err) => {
+            console.error('Firebase listener error:', err);
+            showToast('Lost connection to the room — check Firebase rules/network', true);
+          }
+        );
+
+        setupConnectionWatchdog();
+      })
+      .catch((err) => {
+        console.error('Failed to load room from Firebase:', err);
+        showToast('Could not load saved room data — check Firebase config', true);
+      });
+  } else {
+    if (!roomId) {
+      showToast('No room code in this link', true);
+      return;
+    }
+
+    viewerRoomCode.textContent = roomId;
+    viewerBadge.hidden = false;
+    if (forceSyncBtn) forceSyncBtn.hidden = false;
+
+    roomRef = db.ref(`rooms/${roomId}`);
+
+    // Same explicit "fetch current snapshot first, then attach the live
+    // listener" shape as the host path above, rather than relying on the
+    // .on() listener's first invocation to double as the initial load.
+    // Functionally similar either way, but this keeps init behavior
+    // identical and easy to reason about across both roles.
+    roomRef
+      .once('value')
+      .then((snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          applyState(data);
+        } else {
+          showToast('Waiting for the host to start the session…');
+        }
+
+        roomRef.on(
+          'value',
+          (liveSnapshot) => {
+            // Viewers never call syncStateToFirebase(), so pendingWrites is
+            // always 0 here — every live snapshot Firebase sends is applied
+            // immediately, in the order Firebase delivers it.
+            if (pendingWrites > 0) return;
+            const liveData = liveSnapshot.val();
+            if (liveData) applyState(liveData);
+          },
+          (err) => {
+            console.error('Firebase listener error:', err);
+            showToast('Could not connect to this room — check the link', true);
+          }
+        );
+
+        setupConnectionWatchdog();
+      })
+      .catch((err) => {
+        console.error('Failed to load room from Firebase:', err);
+        showToast('Could not connect to this room — check the link', true);
+      });
+  }
 }
 
-input[type="text"]::placeholder {
-  color: #889988;
+function renderRoomBar() {
+  qrToggleBtn.hidden = false;
+  if (forceSyncBtn) forceSyncBtn.hidden = false;
+  roomCodeText.textContent = roomId;
+
+  const viewerUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&mode=viewer`;
+
+  qrcodeContainer.innerHTML = '';
+  // eslint-disable-next-line no-undef
+  new QRCode(qrcodeContainer, {
+    text: viewerUrl,
+    width: 128,
+    height: 128,
+    colorDark: '#1c2e2a',
+    colorLight: '#ffffff',
+  });
+
+  copyLinkBtn.addEventListener('click', () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(viewerUrl)
+        .then(() => showToast('Viewer link copied!'))
+        .catch(() => showToast('Could not copy link', true));
+    } else {
+      showToast('Copy not supported on this browser', true);
+    }
+  });
 }
 
-input[type="text"].input-error {
-  border-color: var(--danger-red);
-  animation: shake 0.35s;
+// Pulls the four on-screen scores into a plain array for syncing —
+// scores live only in the score-val spans, not in courtPlayers.
+function getCurrentScores() {
+  return [0, 1, 2, 3].map(
+    (i) => parseInt(document.getElementById(`score${i}`).textContent, 10) || 0
+  );
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
-}
+// HOST -> FIREBASE: pushes the entire app state to rooms/{roomId} in a
+// single multi-key update. Called at the end of every action that
+// mutates state.
+function syncStateToFirebase() {
+  if (!isHost || !roomRef) return;
 
-/* ---------------------------------------------------------
-   Photo picker (add-player row)
---------------------------------------------------------- */
-.photo-picker {
-  position: relative;
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-  border-radius: 8px;
-  border: 1.5px solid var(--light-green);
-  background: #fbfdfb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  cursor: pointer;
-}
+  // Build the plain-data part of the payload and strip any `undefined`
+  // out of it (see the big comment on sanitizeForFirebase above — this is
+  // what actually fixes the "sync freezes forever" bug). ServerValue
+  // sentinels below are added AFTER sanitizing, untouched, since they're
+  // special objects Firebase itself interprets, not plain data.
+  const payload = sanitizeForFirebase({
+    waitingQueue,
+    courtPlayers,
+    // NOTE: Firebase treats `null` object-property values as "delete
+    // this key" (and an all-null array collapses away too). Writing an
+    // explicit sentinel (0 = "not running") instead of `null` means
+    // "no active match" is always a real, present value in the DB
+    // rather than an implicit absence that every reader has to guess
+    // the meaning of.
+    matchStartTime: matchStartTime ?? 0,
+    // Human-readable mirror of matchStartTime, purely for glancing at
+    // the Firebase console / debug log — applyState() below still
+    // derives real behavior from matchStartTime and courtPlayers, not
+    // this string, since those are the actual source of truth.
+    matchStatus: matchStartTime !== null ? 'in_progress' : 'idle',
+    scores: getCurrentScores(),
+    matchHistory,
+    recentlyFinished,
+  });
 
-.photo-picker-icon {
-  font-size: 1.05rem;
-  line-height: 1;
-  pointer-events: none;
-}
+  pendingWrites++;
 
-#photoPreview {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: none;
-}
-
-#photoPreview.has-photo {
-  display: block;
-}
-
-/* ---------------------------------------------------------
-   Shared avatar box — photos always fill their box (cropped
-   via object-fit: cover), with a solid initial as fallback
-   when a player has no photo.
---------------------------------------------------------- */
-.avatar-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--mid-green);
-  color: #ffffff;
-  font-weight: 700;
-}
-
-.queue-photo {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.7rem;
-}
-
-.court-photo {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.6rem;
-}
-
-.finished-photo {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.68rem;
-}
-
-.history-photo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1.5px solid var(--dark-green);
-  object-fit: cover;
-  flex-shrink: 0;
-  font-size: 0.72rem;
-}
-
-.scroll-list {
-  max-height: 75px;
-  overflow-y: auto;
-  border: 1px solid var(--light-green);
-  border-radius: 6px;
-  background: #fbfdfb;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.scroll-list li, .history-item {
-  padding: 6px 8px;
-  border-bottom: 1px solid #e0eee0;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-dark);
-}
-
-.scroll-list li:last-child, .history-item:last-child {
-  border-bottom: none;
-}
-
-.queue-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.queue-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.queue-left span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-del-btn {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: #ffebee;
-  color: var(--danger-red);
-  font-size: 0.85rem;
-  line-height: 1;
-  font-weight: 700;
-}
-
-.empty-hint {
-  padding: 10px 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  font-style: italic;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.court-card {
-  padding: 8px;
-}
-
-.court-visual {
-  background: var(--court-blue, #3b5266); /* Dark slate blue */
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 6px;
-  padding: 6px;
-  border: 2px solid #ffffff;
-  border-radius: 6px;
-  height: 140px;
-}
-
-.kitchen-zone {
-  position: absolute;
-  top: 30%;
-  left: 0;
-  right: 0;
-  height: 40%;
-  background: var(--kitchen-blue, #5b6e68); /* Olive-slate grey-green */
-  pointer-events: none;
-}
-
-.court-net {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 2px dashed #ffffff;
-  z-index: 2;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.slot {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1.5px solid var(--dark-green);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 3;
-  padding: 2px 4px;
-}
-
-.player-info {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.player-photo-wrap {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.player-name {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--text-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.score-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 3px;
-}
-
-.score-val {
-  font-weight: 800;
-  font-size: 0.88rem;
-  color: var(--dark-green);
-  min-width: 16px;
-  text-align: center;
-  user-select: none;
-}
-
-.score-btn {
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 4px;
-  width: 22px;
-  height: 22px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-}
-
-.score-minus {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.score-plus {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.team-label {
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.72rem;
-  color: var(--dark-green);
-  margin: 3px 0;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-button {
-  border: none;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-}
-
-button:active {
-  opacity: 0.85;
-}
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-button:disabled:active {
-  opacity: 0.45;
-}
-
-.full-width-btn {
-  width: 100%;
-  margin-top: 4px;
-}
-
-.small-btn {
-  padding: 3px 8px;
-  font-size: 0.72rem;
-}
-
-.court-actions-bar {
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
-}
-
-.court-actions-bar button {
-  flex: 1;
-}
-
-.btn-primary { background: var(--mid-green); color: #ffffff; }
-.btn-secondary { background: var(--mid-green); color: #ffffff; }
-.btn-danger { background: var(--danger-red); color: #ffffff; }
-.btn-danger-light { background: #ffcdd2; color: #880e4f; }
-.btn-warning { background: #ffe082; color: #4e342e; }
-.btn-play { background: #ef6c00; color: #ffffff; }
-
-/* ---------------------------------------------------------
-   Match timer — shown above the SAVE button once PLAY has
-   been pressed; ticks live and is visible to viewers too.
---------------------------------------------------------- */
-.match-timer {
-  text-align: center;
-  font-weight: 800;
-  font-size: 0.95rem;
-  color: var(--dark-green);
-  margin: 2px 0 4px;
-  letter-spacing: 0.4px;
-}
-
-.requeue-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #ffffff;
-  padding: 5px 8px;
-  margin-bottom: 2px;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.requeue-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.requeue-left span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------------------------------------------------------
-   Match history — winner line on top, VS in the middle,
-   loser line on the bottom, with the winning team's two
-   photos anchored to the right.
---------------------------------------------------------- */
-.history-item {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.history-content {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.history-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-line {
-  font-size: 0.76rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-line.winner-line {
-  color: var(--text-dark);
-  font-weight: 700;
-}
-
-.history-vs {
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: #f9a825;
-  margin: 1px 0;
-}
-
-.history-photos {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.history-time {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-/* Toast notification (replaces alert() popups on mobile) */
-.toast {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translate(-50%, 20px);
-  max-width: 90%;
-  background: var(--dark-green);
-  color: #ffffff;
-  padding: 9px 16px;
-  border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  text-align: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-  z-index: 50;
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-.toast-error {
-  background: var(--danger-red);
-}
-
-/* ---------------------------------------------------------
-   MULTIPLAYER: Viewer mode — hides every control a spectator
-   shouldn't touch. Recently Finished and Match History are visible
-   (read-only) to spectators too — see the .host-only-section note in
-   index.html for why they're no longer force-hidden.
---------------------------------------------------------- */
-body.viewer-mode .input-row,
-body.viewer-mode .action-row,
-body.viewer-mode .court-actions-bar,
-body.viewer-mode .full-width-btn,
-body.viewer-mode .score-btn,
-body.viewer-mode .queue-del-btn,
-body.viewer-mode .requeue-row button,
-body.viewer-mode #clearHistoryBtn {
-  display: none !important;
-}
-
-/* ---------------------------------------------------------
-   Tablet / desktop layout (iPad and up) — the phone layout
-   above is untouched; this only kicks in on wider screens.
---------------------------------------------------------- */
-@media (min-width: 700px) {
-  .app-frame {
-    max-width: 900px;
-    width: 92%;
-    height: 90dvh;
-    max-height: 940px;
-    border-radius: 22px;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  // GUARD: Firebase's SDK can throw SYNCHRONOUSLY (not a rejected promise)
+  // when a write is malformed, which would otherwise skip .then/.catch/
+  // .finally entirely and leave pendingWrites stuck above 0 forever —
+  // freezing all future sync for the rest of the session. The sanitize
+  // step above should make that specific failure impossible now, but this
+  // try/catch is a second, independent safety net: no future bad value,
+  // from any code path, can ever again wedge the app this way.
+  let updatePromise;
+  try {
+    updatePromise = roomRef.update({
+      ...payload,
+      // Kept purely as a debug counter you can eyeball in the Firebase
+      // console's Data tab to confirm writes are actually landing — NOT
+      // used to gate whether an incoming snapshot gets applied (see the
+      // big comment on `pendingWrites` near the top of this file for why).
+      revision: firebase.database.ServerValue.increment(1),
+      updatedAt: firebase.database.ServerValue.TIMESTAMP,
+    });
+  } catch (err) {
+    console.error('Firebase update() threw synchronously — bad payload:', err, payload);
+    showToast(`Save failed — not synced to viewers (${err.message})`, true);
+    pendingWrites = Math.max(0, pendingWrites - 1);
+    return;
   }
 
-  header {
-    padding-top: 16px;
-    border-radius: 22px 22px 0 0;
+  // SAFETY NET: if this write somehow never resolves or rejects (a genuine
+  // network hang, not a rejected promise), this guarantees pendingWrites
+  // still gets released after 10s instead of blocking all future sync for
+  // the rest of the session. `settled` stops this and the real
+  // .finally() below from BOTH decrementing if the promise resolves late
+  // (after the timeout already fired) — since multiple writes can be in
+  // flight at once, double-decrementing here would incorrectly release
+  // some other write's still-pending lock.
+  let settled = false;
+  const pendingWriteSafetyTimer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    console.warn('Firebase write taking unusually long (>10s) — releasing the sync lock as a safety net');
+    pendingWrites = Math.max(0, pendingWrites - 1);
+  }, 10000);
+
+  updatePromise
+    .then(() => {
+      // DEBUG: confirms the write actually reached Firebase and what it
+      // carried. If matchHistory/recentlyFinished show 0 here right after
+      // saveMatch(), the bug is upstream of Firebase (in local state);
+      // if they show the right counts here but the viewer still doesn't
+      // update, the bug is downstream (rules/listener on the viewer side).
+      console.log(
+        'Synced to Firebase — matchHistory:', matchHistory.length,
+        'recentlyFinished:', recentlyFinished.length
+      );
+    })
+    .catch((err) => {
+      console.error('Firebase sync failed:', err);
+      // Surface the actual reason (e.g. "PERMISSION_DENIED" from expired
+      // test-mode database rules) instead of a generic message — this is
+      // exactly the kind of failure that otherwise looks like "nothing's
+      // wrong" on the host while nothing actually saves to viewers.
+      const reason = err && (err.code || err.message) ? ` (${err.code || err.message})` : '';
+      showToast(`Save failed — not synced to viewers${reason}`, true);
+    })
+    .finally(() => {
+      clearTimeout(pendingWriteSafetyTimer);
+      if (settled) return;
+      settled = true;
+      pendingWrites = Math.max(0, pendingWrites - 1);
+    });
+}
+
+// FIREBASE -> UI: rebuilds local state + re-renders from a Firebase
+// snapshot. Runs on both Host and Viewer whenever rooms/{roomId} changes,
+// and also whenever forceResync() pulls a fresh snapshot after a
+// reconnect/tab-restore/poll. Every snapshot Firebase delivers here is
+// applied as-is — see the comment on `pendingWrites` near the top of this
+// file for why there's deliberately no additional "is this stale?" check.
+// Tracks the last time a Firebase snapshot was SUCCESSFULLY applied, so the
+// on-screen sync indicator (see updateSyncIndicator) can show real, honest
+// staleness ("Synced 2s ago") instead of everyone just hoping it's working.
+let lastAppliedAt = null;
+
+function applyState(state) {
+  // DEBUG: confirms whether this client (host or viewer) is actually
+  // receiving Firebase snapshots at all, and what they contain. If a
+  // Save on the host never logs anything on the viewer's console, the
+  // problem is upstream of this function entirely (deploy not live yet,
+  // Firebase rules rejecting the write, or the listener never attached)
+  // rather than anything in the state-application logic below. Safe to
+  // remove once things are confirmed working.
+  console.log('Firebase snapshot received:', state);
+
+  // CRITICAL: everything below used to run unguarded. If any single field
+  // in a snapshot was ever malformed, the exception would abort this
+  // function partway through and the live listener would look "frozen" —
+  // every future snapshot (live push AND the 4s poll) would hit the same
+  // bad data and fail the same way, with nothing visible except a console
+  // error nobody was looking at. This was almost certainly the actual
+  // cause of "Save works on the host but Live View never updates, and
+  // even refreshing doesn't help": one bad snapshot, then silence forever.
+  // Wrapping in try/catch can't fix a malformed record, but it guarantees
+  // a single bad field can never again take down the whole sync pipeline,
+  // and the error is now shown on screen instead of only in devtools.
+  try {
+    waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
+    courtPlayers = normalizeCourtPlayers(state.courtPlayers);
+    matchHistory = Array.isArray(state.matchHistory) ? state.matchHistory : [];
+    recentlyFinished = Array.isArray(state.recentlyFinished) ? state.recentlyFinished : [];
+
+    renderQueue();
+    renderCourt();
+
+    const scores = Array.isArray(state.scores) ? state.scores : [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      document.getElementById(`score${i}`).textContent = scores[i] || 0;
+    }
+
+    // Visible to Host and Viewer alike — the "sync freezes forever" bug
+    // that used to make this look broken on the viewer was a Firebase
+    // write-layer issue (see sanitizeForFirebase above), not a visibility
+    // one, and that's now fixed regardless of who's looking at the data.
+    renderRecentlyFinished();
+    renderHistory();
+
+    // Match timer: derived from a shared timestamp so it stays correct across
+    // refreshes and shows the same live count for the host and any viewers.
+    // 0 (our "not running" sentinel) and missing/non-numeric values both
+    // mean "no active match".
+    matchStartTime = typeof state.matchStartTime === 'number' && state.matchStartTime > 0
+      ? state.matchStartTime
+      : null;
+    if (matchStartTime !== null) {
+      matchTimerDisplay.hidden = false;
+      startTimerInterval();
+    } else {
+      matchTimerDisplay.hidden = true;
+      matchTimerDisplay.textContent = '⏱ 00:00';
+      stopTimerInterval();
+    }
+
+    updateCourtButtons();
+    updateTeamLabels();
+
+    lastAppliedAt = Date.now();
+    hideSyncError();
+  } catch (err) {
+    // Surface it ON SCREEN. This is the difference between "it silently
+    // breaks and nobody can tell why" and "it breaks, but you can read
+    // the exact error off the screen and report it back verbatim."
+    console.error('applyState failed on this snapshot:', err, state);
+    showSyncError(`Display error: ${err.message}`);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  addBtn.addEventListener('click', addPlayerToQueue);
+  nameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addPlayerToQueue();
+  });
+  nameInput.addEventListener('input', () => nameInput.classList.remove('input-error'));
+
+  photoInput.addEventListener('change', handlePhotoSelected);
+
+  removeBtn.addEventListener('click', removeLastPlayer);
+  clearQueueBtn.addEventListener('click', clearQueue);
+
+  fillCourtBtn.addEventListener('click', fillCourt);
+  resetCourtBtn.addEventListener('click', resetCourt);
+  shuffleBtn.addEventListener('click', shuffleQueue);
+  saveBtn.addEventListener('click', saveMatch);
+  playBtn.addEventListener('click', startMatch);
+
+  clearHistoryBtn.addEventListener('click', clearHistory);
+  copyHistoryBtn.addEventListener('click', copyMatchHistoryToClipboard);
+
+  // Lets you compare versions on two separate phones with no dev tools:
+  // tap the "Synced Xs ago" line on each device and compare the toast.
+  // A mismatch here means one device is running stale cached code — the
+  // single most common reason "it works on one screen but not the other."
+  if (syncStatusText) {
+    syncStatusText.addEventListener('click', () => {
+      showToast(`Build: ${BUILD_ID}`);
+    });
   }
 
-  header h1 {
-    font-size: 1.5rem;
+  if (forceSyncBtn) {
+    forceSyncBtn.addEventListener('click', () => {
+      // Manual, user-triggered escape hatch: pull the current DB state and
+      // reapply it right now, regardless of what the live listener or the
+      // poll are doing. Gives an immediate, on-demand answer to "is this
+      // actually connected?" instead of waiting and hoping.
+      if (!roomRef) return;
+      forceSyncBtn.classList.add('spinning');
+      roomRef
+        .once('value')
+        .then((snapshot) => {
+          const data = snapshot.val();
+          if (data) applyState(data);
+          showToast('Synced!');
+        })
+        .catch((err) => {
+          showSyncError(`Force sync failed: ${err.code || err.message}`);
+        })
+        .finally(() => {
+          forceSyncBtn.classList.remove('spinning');
+        });
+    });
   }
 
-  .container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "viewer viewer"
-      "queue court"
-      "actions actions"
-      "finished history";
-    gap: 14px;
-    padding: 16px;
+  renderQueue();
+  renderCourt();
+  renderRecentlyFinished();
+  renderHistory();
+  updateCourtButtons();
+  updateTeamLabels();
+
+  // MULTIPLAYER: set up Host (QR + writes) or Viewer (read-only listener).
+  initMultiplayer();
+});
+
+/* ---------------------------------------------------------
+   Toast — small non-blocking notifications (mobile-friendly,
+   replaces jarring alert() popups)
+--------------------------------------------------------- */
+let toastTimer = null;
+function showToast(message, isError = false) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    document.querySelector('.app-frame').appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.className = 'toast show' + (isError ? ' toast-error' : '');
+  clearTimeout(toastTimer);
+  // Errors stay up longer (4.5s vs 2.2s) — a sync failure is easy to miss
+  // otherwise, and missing it is exactly how this class of bug goes unnoticed.
+  toastTimer = setTimeout(() => toast.classList.remove('show'), isError ? 4500 : 2200);
+}
+
+/* ---------------------------------------------------------
+   Photo picker (used when adding a new player)
+   -----------------------------------------------------------
+   SYNC RELIABILITY: a raw photo straight off a phone camera can easily be
+   several MB. Every player photo gets embedded as base64 in THREE places
+   (waitingQueue/courtPlayers, every matchHistory entry, and
+   recentlyFinished), and the whole state document is pushed to Firebase
+   in one update() call — so a session with a few dozen full-size photos
+   can turn into a multi-megabyte write. That's a very plausible cause of
+   "history/photos stop syncing to viewers after a while": the write gets
+   slow, times out on a shaky mobile connection, or bumps into Firebase's
+   per-node size limits, and fails silently in the background.
+   Downscaling + re-compressing to a small JPEG here (well before the
+   image is ever added to state) keeps every stored photo well under
+   ~30-50KB regardless of what the camera produced, so this class of
+   failure shouldn't happen anymore.
+--------------------------------------------------------- */
+const PHOTO_MAX_DIMENSION = 160; // px, long edge
+const PHOTO_JPEG_QUALITY = 0.72;
+
+function compressImageFile(file, maxDimension, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not decode image'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function handlePhotoSelected() {
+  const file = photoInput.files && photoInput.files[0];
+  if (!file) return;
+
+  compressImageFile(file, PHOTO_MAX_DIMENSION, PHOTO_JPEG_QUALITY)
+    .then((dataUrl) => {
+      pendingPhoto = dataUrl;
+      photoPreview.src = pendingPhoto;
+      photoPreview.classList.add('has-photo');
+      photoPickerIcon.style.display = 'none';
+    })
+    .catch((err) => {
+      console.error('Photo processing failed:', err);
+      showToast('Could not use that photo — try a different one', true);
+      resetPhotoPicker();
+    });
+}
+
+function resetPhotoPicker() {
+  pendingPhoto = null;
+  photoInput.value = '';
+  photoPreview.src = '';
+  photoPreview.classList.remove('has-photo');
+  photoPickerIcon.style.display = '';
+}
+
+/* ---------------------------------------------------------
+   Avatar rendering helper — used everywhere a player photo
+   shows up. Falls back to a solid initial box when there's
+   no photo, so the "box" shape is always filled.
+--------------------------------------------------------- */
+function createAvatarElement(player, className) {
+  if (player && player.photo) {
+    const img = document.createElement('img');
+    img.src = player.photo;
+    img.alt = player.name || '';
+    img.className = className;
+    return img;
+  }
+  const div = document.createElement('div');
+  div.className = `${className} avatar-fallback`;
+  const initial = player && player.name ? player.name.trim().charAt(0).toUpperCase() : '?';
+  div.textContent = initial || '?';
+  return div;
+}
+
+/* ---------------------------------------------------------
+   Match timer — starts when PLAY is pressed, ticks live, and
+   its start timestamp is synced through Firebase so a page
+   refresh (host or viewer) resumes the correct elapsed time
+   instead of restarting from zero.
+--------------------------------------------------------- */
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function startTimerInterval() {
+  stopTimerInterval();
+  const tick = () => {
+    if (matchStartTime === null) return;
+    matchTimerDisplay.textContent = `⏱ ${formatDuration(Date.now() - matchStartTime)}`;
+  };
+  tick();
+  matchTimerInterval = setInterval(tick, 1000);
+}
+
+function stopTimerInterval() {
+  if (matchTimerInterval) {
+    clearInterval(matchTimerInterval);
+    matchTimerInterval = null;
+  }
+}
+
+function startMatch() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (!isCourtOccupied()) {
+    showToast('Fill the court before starting the match', true);
+    return;
+  }
+  if (matchStartTime !== null) return; // already running
+
+  matchStartTime = Date.now();
+  matchTimerDisplay.hidden = false;
+  startTimerInterval();
+  updateCourtButtons();
+  showToast('Match started!');
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+/* ---------------------------------------------------------
+   Score controls
+--------------------------------------------------------- */
+function adjustScore(slotIndex, delta) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+  if (!courtPlayers[slotIndex]) return; // no player in this slot yet — nothing to score
+
+  const scoreElement = document.getElementById(`score${slotIndex}`);
+  if (!scoreElement) return;
+
+  let currentScore = parseInt(scoreElement.textContent, 10) || 0;
+  currentScore = Math.max(0, currentScore + delta);
+  scoreElement.textContent = currentScore;
+  updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function updateTeamLabels() {
+  const s0 = parseInt(document.getElementById('score0').textContent, 10) || 0;
+  const s1 = parseInt(document.getElementById('score1').textContent, 10) || 0;
+  const s2 = parseInt(document.getElementById('score2').textContent, 10) || 0;
+  const s3 = parseInt(document.getElementById('score3').textContent, 10) || 0;
+
+  if (team1Label) team1Label.textContent = `Team 1 [${s0 + s1}]`;
+  if (team2Label) team2Label.textContent = `Team 2 [${s2 + s3}]`;
+}
+
+/* ---------------------------------------------------------
+   Helpers shared across queue / court
+--------------------------------------------------------- */
+function isCourtOccupied() {
+  return courtPlayers.some((p) => p !== null);
+}
+
+function isNameInUse(name) {
+  const lower = name.toLowerCase();
+  const inQueue = waitingQueue.some((p) => p.name.toLowerCase() === lower);
+  const onCourt = courtPlayers.some((p) => p && p.name.toLowerCase() === lower);
+  return inQueue || onCourt;
+}
+
+function updateCourtButtons() {
+  const occupied = isCourtOccupied();
+  fillCourtBtn.disabled = occupied;
+  saveBtn.disabled = !occupied;
+  resetCourtBtn.disabled = !occupied;
+  playBtn.disabled = !occupied || matchStartTime !== null;
+  updateScoreButtonsLocked();
+}
+
+// Disables the +/- buttons for any slot that doesn't have a player yet,
+// so scores can't be bumped before someone is actually standing there.
+function updateScoreButtonsLocked() {
+  for (let i = 0; i < 4; i++) {
+    const hasPlayer = !!courtPlayers[i];
+    const minusBtn = document.querySelector(`#slot${i} .score-minus`);
+    const plusBtn = document.querySelector(`#slot${i} .score-plus`);
+    if (minusBtn) minusBtn.disabled = !hasPlayer;
+    if (plusBtn) plusBtn.disabled = !hasPlayer;
+  }
+}
+
+/* ---------------------------------------------------------
+   Waiting queue
+--------------------------------------------------------- */
+function addPlayerToQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  const name = nameInput.value.trim();
+  if (!name) return;
+
+  if (isNameInUse(name)) {
+    showToast(`"${name}" is already in the queue or on the court`, true);
+    nameInput.classList.add('input-error');
+    return;
   }
 
-  .viewer-badge { grid-area: viewer; }
-  .container > section:nth-of-type(1) { grid-area: queue; }
-  .container > section:nth-of-type(2) { grid-area: court; }
-  .container > section:nth-of-type(3) { grid-area: actions; }
-  .container > section:nth-of-type(4) { grid-area: finished; }
-  .container > section:nth-of-type(5) { grid-area: history; }
+  waitingQueue.push({ name, photo: pendingPhoto });
+  nameInput.value = '';
+  nameInput.classList.remove('input-error');
+  resetPhotoPicker();
+  nameInput.focus();
+  renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
+}
 
-  .scroll-list {
-    max-height: 140px;
+function removePlayerAt(index) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  waitingQueue.splice(index, 1);
+  renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function removeLastPlayer() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (waitingQueue.length > 0) {
+    waitingQueue.pop();
+    renderQueue();
+    syncStateToFirebase(); // MULTIPLAYER
+  } else {
+    showToast('Queue is already empty', true);
+  }
+}
+
+function clearQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (waitingQueue.length === 0) return;
+  if (!confirm('Clear the entire waiting queue?')) return;
+  waitingQueue = [];
+  renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function shuffleQueue() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (waitingQueue.length < 2) return;
+  for (let i = waitingQueue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [waitingQueue[i], waitingQueue[j]] = [waitingQueue[j], waitingQueue[i]];
+  }
+  renderQueue();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function renderQueue() {
+  queueList.innerHTML = '';
+
+  if (waitingQueue.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No players waiting';
+    queueList.appendChild(empty);
+  } else {
+    waitingQueue.forEach((player, index) => {
+      const li = document.createElement('li');
+      li.className = 'queue-row';
+
+      const left = document.createElement('div');
+      left.className = 'queue-left';
+
+      const avatar = createAvatarElement(player, 'queue-photo');
+
+      const label = document.createElement('span');
+      label.textContent = `${index + 1}. ${player.name}`;
+
+      left.appendChild(avatar);
+      left.appendChild(label);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'queue-del-btn';
+      delBtn.textContent = '\u00d7';
+      delBtn.setAttribute('aria-label', `Remove ${player.name}`);
+      delBtn.addEventListener('click', () => removePlayerAt(index));
+
+      li.appendChild(left);
+      li.appendChild(delBtn);
+      queueList.appendChild(li);
+    });
   }
 
-  .court-visual {
-    height: 220px;
+  queueCount.textContent = `${waitingQueue.length} player${waitingQueue.length !== 1 ? 's' : ''}`;
+}
+
+/* ---------------------------------------------------------
+   Court
+--------------------------------------------------------- */
+function setSlotPlayer(index, player) {
+  const nameSpan = document.querySelector(`#slot${index} .player-name`);
+  const photoWrap = document.querySelector(`#slot${index} .player-photo-wrap`);
+  photoWrap.innerHTML = '';
+
+  if (player) {
+    nameSpan.textContent = player.name;
+    photoWrap.appendChild(createAvatarElement(player, 'court-photo'));
+  } else {
+    nameSpan.textContent = EMPTY_SLOT;
+  }
+}
+
+function renderCourt() {
+  for (let i = 0; i < 4; i++) {
+    setSlotPlayer(i, courtPlayers[i]);
+  }
+}
+
+function fillCourt() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (isCourtOccupied()) {
+    showToast('Court already has players — save or reset the match first', true);
+    return;
+  }
+
+  if (waitingQueue.length < 4) {
+    showToast(`Need ${4 - waitingQueue.length} more player(s) to fill the court`, true);
+    return;
+  }
+
+  for (let i = 0; i < 4; i++) {
+    courtPlayers[i] = waitingQueue.shift();
+  }
+
+  // Safety net: a fresh court should never inherit a running timer.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
+
+  renderCourt();
+  renderQueue();
+  updateCourtButtons();
+  updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function resetCourt() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (!isCourtOccupied()) {
+    showToast('Court is already empty', true);
+    return;
+  }
+
+  // Walk slots back-to-front so unshift() restores the original slot order.
+  for (let i = 3; i >= 0; i--) {
+    if (courtPlayers[i]) {
+      waitingQueue.unshift(courtPlayers[i]);
+      courtPlayers[i] = null;
+    }
+    document.getElementById(`score${i}`).textContent = '0';
+  }
+
+  // Abandoning the match without saving — clear the timer too.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
+
+  renderCourt();
+  renderQueue();
+  updateCourtButtons();
+  updateTeamLabels();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+function saveMatch() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (!isCourtOccupied()) {
+    showToast('No active match on the court', true);
+    return;
+  }
+
+  if (courtPlayers.some((p) => p === null)) {
+    showToast('Please fill all four court slots before saving', true);
+    return;
+  }
+
+  const scores = [0, 1, 2, 3].map(
+    (i) => parseInt(document.getElementById(`score${i}`).textContent, 10) || 0
+  );
+  const team1Total = scores[0] + scores[1];
+  const team2Total = scores[2] + scores[3];
+
+  // Duration is only meaningful if PLAY was actually pressed; otherwise
+  // there's nothing to clock, so it's omitted from the record.
+  const duration = matchStartTime !== null ? formatDuration(Date.now() - matchStartTime) : null;
+
+  const matchRecord = {
+    players: courtPlayers.map((p, i) => ({ name: p.name, photo: p.photo, score: scores[i] })),
+    team1Total,
+    team2Total,
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    duration,
+  };
+
+  matchHistory.unshift(matchRecord);
+  // Cap how many matches we keep. Every entry can carry up to 4 embedded
+  // player photos as base64 — left unbounded, this room's Firebase node
+  // grows without limit and every load gets slower and more failure-prone.
+  // Photos are now compressed to ~30-50KB max each (see
+  // compressImageFile/PHOTO_MAX_DIMENSION above), so 200 matches — far
+  // more than the 20+ a single session needs — stays a manageable size.
+  const MAX_HISTORY = 200;
+  if (matchHistory.length > MAX_HISTORY) {
+    matchHistory.length = MAX_HISTORY;
+  }
+  // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
+  recentlyFinished = recentlyFinished.concat(
+    courtPlayers.map((p) => ({ name: p.name, photo: p.photo }))
+  );
+
+  renderHistory();
+  renderRecentlyFinished();
+
+  courtPlayers = [null, null, null, null];
+  for (let i = 0; i < 4; i++) {
+    document.getElementById(`score${i}`).textContent = '0';
+  }
+
+  // Match is over — clear the timer for the next one.
+  matchStartTime = null;
+  stopTimerInterval();
+  matchTimerDisplay.hidden = true;
+  matchTimerDisplay.textContent = '⏱ 00:00';
+
+  renderCourt();
+  updateCourtButtons();
+  updateTeamLabels();
+  showToast('Match saved!');
+  syncStateToFirebase(); // MULTIPLAYER — single update() call carries court
+                         // reset, matchHistory, recentlyFinished, and the
+                         // cleared timer state to every client together.
+}
+
+/* ---------------------------------------------------------
+   Recently finished
+--------------------------------------------------------- */
+function renderRecentlyFinished() {
+  finishedContainer.innerHTML = '';
+
+  if (recentlyFinished.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No finished players yet';
+    finishedContainer.appendChild(empty);
+    return;
+  }
+
+  recentlyFinished.forEach((player, index) => {
+    if (!player || !player.name) {
+      console.error('Skipping malformed recentlyFinished entry:', player);
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'requeue-row';
+
+    const left = document.createElement('div');
+    left.className = 'requeue-left';
+    left.appendChild(createAvatarElement(player, 'finished-photo'));
+
+    const label = document.createElement('span');
+    label.textContent = player.name;
+    left.appendChild(label);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-primary small-btn';
+    btn.textContent = '+ Requeue';
+    btn.addEventListener('click', () => requeuePlayer(index));
+
+    row.appendChild(left);
+    row.appendChild(btn);
+    finishedContainer.appendChild(row);
+  });
+}
+
+function requeuePlayer(index) {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  const player = recentlyFinished[index];
+  if (!player) return;
+
+  if (isNameInUse(player.name)) {
+    showToast(`"${player.name}" is already in the queue`, true);
+    return;
+  }
+
+  recentlyFinished.splice(index, 1);
+  waitingQueue.push(player);
+  renderQueue();
+  renderRecentlyFinished();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+/* ---------------------------------------------------------
+   Match history
+--------------------------------------------------------- */
+function renderHistory() {
+  historyList.innerHTML = '';
+  copyHistoryBtn.disabled = matchHistory.length === 0;
+
+  if (matchHistory.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-hint';
+    empty.textContent = 'No matches played yet';
+    historyList.appendChild(empty);
+    return;
+  }
+
+  matchHistory.forEach((match) => {
+    // Defensive: skip a single malformed record instead of throwing and
+    // leaving every match AFTER it in the list unrendered. A record could
+    // be malformed if a very old client version wrote a different shape,
+    // or a snapshot arrived mid-write.
+    if (!match || !Array.isArray(match.players) || match.players.length < 4) {
+      console.error('Skipping malformed match history entry:', match);
+      return;
+    }
+
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    // Fallback objects so a single missing player field (e.g. an old
+    // record saved before "score" existed) can't crash the whole render.
+    const [p0, p1, p2, p3] = match.players.map((p) => ({
+      name: 'Unknown',
+      score: 0,
+      ...(p || {}),
+    }));
+
+    const team1Total = match.team1Total ?? 0;
+    const team2Total = match.team2Total ?? 0;
+
+    let winner = null;
+    if (team1Total > team2Total) winner = 1;
+    else if (team2Total > team1Total) winner = 2;
+
+    const content = document.createElement('div');
+    content.className = 'history-content';
+
+    const main = document.createElement('div');
+    main.className = 'history-main';
+
+    const team1Line = document.createElement('div');
+    team1Line.className = 'history-line' + (winner === 1 ? ' winner-line' : '');
+    team1Line.textContent = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${team1Total}]`;
+
+    const vsLine = document.createElement('div');
+    vsLine.className = 'history-vs';
+    vsLine.textContent = winner ? 'VS' : '\uD83E\uDD1D VS';
+
+    const team2Line = document.createElement('div');
+    team2Line.className = 'history-line' + (winner === 2 ? ' winner-line' : '');
+    team2Line.textContent = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${team2Total}]`;
+
+    main.appendChild(team1Line);
+    main.appendChild(vsLine);
+    main.appendChild(team2Line);
+
+    // Show the winning team's two photos on the right. On a tie, default
+    // to team 1's photos since there's no outright winner to feature.
+    const photosWrap = document.createElement('div');
+    photosWrap.className = 'history-photos';
+    const winningPlayers = winner === 2 ? [p2, p3] : [p0, p1];
+    winningPlayers.forEach((p) => {
+      photosWrap.appendChild(createAvatarElement(p, 'history-photo'));
+    });
+
+    content.appendChild(main);
+    content.appendChild(photosWrap);
+
+    const time = document.createElement('div');
+    time.className = 'history-time';
+    time.textContent = match.duration ? `${match.time} · ${match.duration}` : match.time;
+
+    item.appendChild(content);
+    item.appendChild(time);
+    historyList.appendChild(item);
+  });
+}
+
+function clearHistory() {
+  if (isViewerMode) return; // MULTIPLAYER: viewers are read-only
+
+  if (matchHistory.length === 0) return;
+  if (!confirm('Clear match history?')) return;
+  matchHistory = [];
+  renderHistory();
+  syncStateToFirebase(); // MULTIPLAYER
+}
+
+/* ---------------------------------------------------------
+   Copy match history as plain text (for pasting into Notes,
+   a text message, etc). Read-only, so this works for both
+   Host and Viewer. Mirrors the same winner/VS/score layout
+   shown on screen in renderHistory() above, just as plain
+   text with no photos — a blank line between each match so
+   they stay visually separated once pasted somewhere else.
+--------------------------------------------------------- */
+function formatMatchHistoryForClipboard() {
+  const blocks = [];
+
+  matchHistory.forEach((match) => {
+    // Same defensive shape-guard as renderHistory() — skip a single
+    // malformed record rather than let it break the whole export.
+    if (!match || !Array.isArray(match.players) || match.players.length < 4) return;
+
+    const [p0, p1, p2, p3] = match.players.map((p) => ({
+      name: 'Unknown',
+      score: 0,
+      ...(p || {}),
+    }));
+
+    const team1Total = match.team1Total ?? 0;
+    const team2Total = match.team2Total ?? 0;
+
+    let winner = null;
+    if (team1Total > team2Total) winner = 1;
+    else if (team2Total > team1Total) winner = 2;
+
+    const team1Line = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${team1Total}]`;
+    const vsLine = winner ? 'VS' : '\uD83E\uDD1D VS';
+    const team2Line = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${team2Total}]`;
+    const timeLine = match.duration ? `${match.time} \u00b7 ${match.duration}` : match.time;
+
+    blocks.push(`${team1Line}\n${vsLine}\n${team2Line}\n${timeLine}`);
+  });
+
+  const header = `Pickle Jam \u2014 Match History${roomId ? ` (Room ${roomId})` : ''}\nExported ${new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+
+  // Blank line between the header and the first match, AND between every
+  // match after that — the "space in the middle" that keeps each match
+  // its own visual block once pasted into Notes.
+  return `${header}\n\n${blocks.join('\n\n')}`;
+}
+
+function copyMatchHistoryToClipboard() {
+  if (matchHistory.length === 0) {
+    showToast('No match history to copy yet', true);
+    return;
+  }
+
+  const text = formatMatchHistoryForClipboard();
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => showToast('Match history copied!'))
+      .catch(() => showToast('Could not copy match history', true));
+  } else {
+    showToast('Copy not supported on this browser', true);
   }
 }
