@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14c';
+const BUILD_ID = 'pickle-jam-viewer-scope-2026-09-14c';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -126,6 +126,30 @@ const isViewerMode = urlParams.get('mode') === 'viewer';
 const isHost = !isViewerMode;
 let roomId = urlParams.get('room');
 let roomRef = null;
+
+// HOST PERSISTENCE: a very likely real cause of "my history/timer keeps
+// getting reset" is nothing to do with syncing at all — it's that the
+// host reopened the app WITHOUT the "?room=XXXXXX" URL param (e.g. an
+// "Add to Home Screen" icon that was saved before a room existed, a
+// bookmark to the bare URL, or the query string getting stripped by
+// something in between). With no room id in the URL, the old code always
+// treated that as "brand new session" and generated a fresh random room —
+// which looks exactly like everything being wiped, even though the old
+// room (and all its history) is still sitting untouched in Firebase.
+// Mirroring the room id into localStorage means the HOST's browser can
+// always find its way back to the same room even if the URL doesn't carry
+// it, while a Viewer (who only ever gets a room id from the QR link) is
+// unaffected.
+const HOST_ROOM_STORAGE_KEY = 'pickleJam:hostRoomId';
+if (isHost && !roomId) {
+  try {
+    const savedRoomId = window.localStorage.getItem(HOST_ROOM_STORAGE_KEY);
+    if (savedRoomId) roomId = savedRoomId;
+  } catch (err) {
+    // Private browsing / storage disabled — fall through and generate a
+    // fresh room as before. Not fatal, just loses this particular safety net.
+  }
+}
 
 // Applied immediately (script runs after the body has parsed) so
 // spectator controls are hidden before the first paint, not after.
@@ -272,10 +296,18 @@ function initMultiplayer() {
   if (isHost) {
     if (!roomId) {
       roomId = generateRoomId();
-      // Keep the room id in the URL so refreshing the host page resumes
-      // the same room instead of spinning up a brand new one.
-      const newUrl = `${window.location.pathname}?room=${roomId}`;
-      window.history.replaceState({}, '', newUrl);
+    }
+    // Keep the room id in BOTH the URL (so the address bar/share sheet is
+    // correct) AND localStorage (so it survives even if the URL param is
+    // ever missing — see the HOST_ROOM_STORAGE_KEY comment above). This
+    // runs whether roomId was just generated or was recovered from the
+    // URL/localStorage above, so the two always stay in sync.
+    const newUrl = `${window.location.pathname}?room=${roomId}`;
+    window.history.replaceState({}, '', newUrl);
+    try {
+      window.localStorage.setItem(HOST_ROOM_STORAGE_KEY, roomId);
+    } catch (err) {
+      // Private browsing / storage disabled — non-fatal, see above.
     }
 
     roomRef = db.ref(`rooms/${roomId}`);
@@ -514,8 +546,16 @@ function applyState(state) {
       document.getElementById(`score${i}`).textContent = scores[i] || 0;
     }
 
-    renderRecentlyFinished();
-    renderHistory();
+    // VIEWER SCOPE: a spectator only ever sees the Waiting Queue and the
+    // Court (the sections are hidden outright in CSS — see
+    // body.viewer-mode .host-only-section in styles.css). Skipping the
+    // render here too means a viewer never even builds the Recently
+    // Finished / Match History DOM — cheaper, and it's simply not that
+    // client's data to display.
+    if (isHost) {
+      renderRecentlyFinished();
+      renderHistory();
+    }
 
     // Match timer: derived from a shared timestamp so it stays correct across
     // refreshes and shows the same live count for the host and any viewers.
@@ -603,8 +643,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderQueue();
   renderCourt();
-  renderRecentlyFinished();
-  renderHistory();
+  if (isHost) {
+    renderRecentlyFinished();
+    renderHistory();
+  }
   updateCourtButtons();
   updateTeamLabels();
 
@@ -634,19 +676,70 @@ function showToast(message, isError = false) {
 
 /* ---------------------------------------------------------
    Photo picker (used when adding a new player)
+   -----------------------------------------------------------
+   SYNC RELIABILITY: a raw photo straight off a phone camera can easily be
+   several MB. Every player photo gets embedded as base64 in THREE places
+   (waitingQueue/courtPlayers, every matchHistory entry, and
+   recentlyFinished), and the whole state document is pushed to Firebase
+   in one update() call — so a session with a few dozen full-size photos
+   can turn into a multi-megabyte write. That's a very plausible cause of
+   "history/photos stop syncing to viewers after a while": the write gets
+   slow, times out on a shaky mobile connection, or bumps into Firebase's
+   per-node size limits, and fails silently in the background.
+   Downscaling + re-compressing to a small JPEG here (well before the
+   image is ever added to state) keeps every stored photo well under
+   ~30-50KB regardless of what the camera produced, so this class of
+   failure shouldn't happen anymore.
 --------------------------------------------------------- */
+const PHOTO_MAX_DIMENSION = 160; // px, long edge
+const PHOTO_JPEG_QUALITY = 0.72;
+
+function compressImageFile(file, maxDimension, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not decode image'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function handlePhotoSelected() {
   const file = photoInput.files && photoInput.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    pendingPhoto = e.target.result;
-    photoPreview.src = pendingPhoto;
-    photoPreview.classList.add('has-photo');
-    photoPickerIcon.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  compressImageFile(file, PHOTO_MAX_DIMENSION, PHOTO_JPEG_QUALITY)
+    .then((dataUrl) => {
+      pendingPhoto = dataUrl;
+      photoPreview.src = pendingPhoto;
+      photoPreview.classList.add('has-photo');
+      photoPickerIcon.style.display = 'none';
+    })
+    .catch((err) => {
+      console.error('Photo processing failed:', err);
+      showToast('Could not use that photo — try a different one', true);
+      resetPhotoPicker();
+    });
 }
 
 function resetPhotoPicker() {
@@ -801,7 +894,7 @@ function addPlayerToQueue() {
     return;
   }
 
-  waitingQueue.push({ name, photo: pendingPhoto ?? null });
+  waitingQueue.push({ name, photo: pendingPhoto });
   nameInput.value = '';
   nameInput.classList.remove('input-error');
   resetPhotoPicker();
@@ -998,29 +1091,27 @@ function saveMatch() {
   const duration = matchStartTime !== null ? formatDuration(Date.now() - matchStartTime) : null;
 
   const matchRecord = {
-    players: courtPlayers.map((p, i) => ({
-      name: p.name,
-      photo: p.photo ?? null,
-      score: scores[i]
-    })),
+    players: courtPlayers.map((p, i) => ({ name: p.name, photo: p.photo, score: scores[i] })),
     team1Total,
     team2Total,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    duration: duration ?? null,
+    duration,
   };
 
   matchHistory.unshift(matchRecord);
   // Cap how many matches we keep. Every entry can carry up to 4 embedded
   // player photos as base64 — left unbounded, this room's Firebase node
   // grows without limit and every load gets slower and more failure-prone.
-  // 200 matches is far more than a single session needs.
+  // Photos are now compressed to ~30-50KB max each (see
+  // compressImageFile/PHOTO_MAX_DIMENSION above), so 200 matches — far
+  // more than the 20+ a single session needs — stays a manageable size.
   const MAX_HISTORY = 200;
   if (matchHistory.length > MAX_HISTORY) {
     matchHistory.length = MAX_HISTORY;
   }
   // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
   recentlyFinished = recentlyFinished.concat(
-    courtPlayers.map((p) => ({ name: p.name, photo: p.photo ?? null }))
+    courtPlayers.map((p) => ({ name: p.name, photo: p.photo }))
   );
 
   renderHistory();
