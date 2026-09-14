@@ -5,7 +5,7 @@ const EMPTY_SLOT = '— —';
 // line prints on both before troubleshooting anything else — if one tab
 // shows an older/missing build tag, that tab is running stale cached
 // code, not the file you think you just pushed.
-const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14a';
+const BUILD_ID = 'pickle-jam-sync-fix-2026-09-14b';
 console.log('%cPickle Jam build:', 'font-weight:bold', BUILD_ID);
 
 
@@ -77,6 +77,9 @@ const team1Label = document.getElementById('team1Label');
 const team2Label = document.getElementById('team2Label');
 
 const connectionBanner = document.getElementById('connectionBanner');
+const syncErrorBanner = document.getElementById('syncErrorBanner');
+const syncStatusText = document.getElementById('syncStatusText');
+const forceSyncBtn = document.getElementById('forceSyncBtn');
 
 /* ===========================================================
    MULTIPLAYER: Firebase config + Host/Viewer setup
@@ -182,6 +185,45 @@ function forceResync() {
     });
 }
 
+// Shows a persistent (non-auto-dismissing) red banner when a snapshot fails
+// to apply. Unlike the toast, this stays up until a snapshot succeeds again,
+// so a sync problem can't be missed just because nobody was looking at the
+// screen in the 4.5s a toast is visible.
+function showSyncError(message) {
+  if (!syncErrorBanner) return;
+  syncErrorBanner.textContent = `⚠️ ${message}`;
+  syncErrorBanner.hidden = false;
+}
+function hideSyncError() {
+  if (!syncErrorBanner) return;
+  syncErrorBanner.hidden = true;
+}
+
+// Updates the small "Synced Xs ago" line every second so a frozen Live View
+// (or a frozen host, after a refresh) is visible at a glance instead of
+// silently showing stale data with nothing on screen to indicate that.
+function updateSyncIndicator() {
+  if (!syncStatusText) return;
+  if (lastAppliedAt === null) {
+    syncStatusText.textContent = isViewerMode ? 'Waiting for host…' : 'Not synced yet';
+    return;
+  }
+  const secs = Math.floor((Date.now() - lastAppliedAt) / 1000);
+  let label;
+  if (secs < 2) label = 'Synced just now';
+  else if (secs < 60) label = `Synced ${secs}s ago`;
+  else label = `Synced ${Math.floor(secs / 60)}m ago`;
+  syncStatusText.textContent = label;
+  // A viewer that hasn't heard from Firebase in a while despite the 4s poll
+  // almost certainly has a real problem (stale cache, dead connection) —
+  // flag it visibly rather than quietly showing old data as if it's current.
+  if (secs > 15) {
+    syncStatusText.classList.add('sync-stale');
+  } else {
+    syncStatusText.classList.remove('sync-stale');
+  }
+}
+
 const RESYNC_POLL_MS = 4000;
 
 function setupConnectionWatchdog() {
@@ -219,6 +261,11 @@ function setupConnectionWatchdog() {
   // it. Cheap for an app this size, and makes staleness a non-issue
   // regardless of which window/tab/OS quirk is in play.
   setInterval(forceResync, RESYNC_POLL_MS);
+
+  // Keeps the "Synced Xs ago" text moving even when no new snapshot has
+  // arrived — that's exactly the case it exists to reveal.
+  setInterval(updateSyncIndicator, 1000);
+  updateSyncIndicator();
 }
 
 function initMultiplayer() {
@@ -281,6 +328,7 @@ function initMultiplayer() {
 
     viewerRoomCode.textContent = roomId;
     viewerBadge.hidden = false;
+    if (forceSyncBtn) forceSyncBtn.hidden = false;
 
     roomRef = db.ref(`rooms/${roomId}`);
 
@@ -326,6 +374,7 @@ function initMultiplayer() {
 
 function renderRoomBar() {
   qrToggleBtn.hidden = false;
+  if (forceSyncBtn) forceSyncBtn.hidden = false;
   roomCodeText.textContent = roomId;
 
   const viewerUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&mode=viewer`;
@@ -425,6 +474,11 @@ function syncStateToFirebase() {
 // reconnect/tab-restore/poll. Every snapshot Firebase delivers here is
 // applied as-is — see the comment on `pendingWrites` near the top of this
 // file for why there's deliberately no additional "is this stale?" check.
+// Tracks the last time a Firebase snapshot was SUCCESSFULLY applied, so the
+// on-screen sync indicator (see updateSyncIndicator) can show real, honest
+// staleness ("Synced 2s ago") instead of everyone just hoping it's working.
+let lastAppliedAt = null;
+
 function applyState(state) {
   // DEBUG: confirms whether this client (host or viewer) is actually
   // receiving Firebase snapshots at all, and what they contain. If a
@@ -435,42 +489,62 @@ function applyState(state) {
   // remove once things are confirmed working.
   console.log('Firebase snapshot received:', state);
 
-  waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
+  // CRITICAL: everything below used to run unguarded. If any single field
+  // in a snapshot was ever malformed, the exception would abort this
+  // function partway through and the live listener would look "frozen" —
+  // every future snapshot (live push AND the 4s poll) would hit the same
+  // bad data and fail the same way, with nothing visible except a console
+  // error nobody was looking at. This was almost certainly the actual
+  // cause of "Save works on the host but Live View never updates, and
+  // even refreshing doesn't help": one bad snapshot, then silence forever.
+  // Wrapping in try/catch can't fix a malformed record, but it guarantees
+  // a single bad field can never again take down the whole sync pipeline,
+  // and the error is now shown on screen instead of only in devtools.
+  try {
+    waitingQueue = Array.isArray(state.waitingQueue) ? state.waitingQueue : [];
+    courtPlayers = normalizeCourtPlayers(state.courtPlayers);
+    matchHistory = Array.isArray(state.matchHistory) ? state.matchHistory : [];
+    recentlyFinished = Array.isArray(state.recentlyFinished) ? state.recentlyFinished : [];
 
-  courtPlayers = normalizeCourtPlayers(state.courtPlayers);
+    renderQueue();
+    renderCourt();
 
-  matchHistory = Array.isArray(state.matchHistory) ? state.matchHistory : [];
-  recentlyFinished = Array.isArray(state.recentlyFinished) ? state.recentlyFinished : [];
+    const scores = Array.isArray(state.scores) ? state.scores : [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      document.getElementById(`score${i}`).textContent = scores[i] || 0;
+    }
 
-  renderQueue();
-  renderCourt();
+    renderRecentlyFinished();
+    renderHistory();
 
-  const scores = Array.isArray(state.scores) ? state.scores : [0, 0, 0, 0];
-  for (let i = 0; i < 4; i++) {
-    document.getElementById(`score${i}`).textContent = scores[i] || 0;
+    // Match timer: derived from a shared timestamp so it stays correct across
+    // refreshes and shows the same live count for the host and any viewers.
+    // 0 (our "not running" sentinel) and missing/non-numeric values both
+    // mean "no active match".
+    matchStartTime = typeof state.matchStartTime === 'number' && state.matchStartTime > 0
+      ? state.matchStartTime
+      : null;
+    if (matchStartTime !== null) {
+      matchTimerDisplay.hidden = false;
+      startTimerInterval();
+    } else {
+      matchTimerDisplay.hidden = true;
+      matchTimerDisplay.textContent = '⏱ 00:00';
+      stopTimerInterval();
+    }
+
+    updateCourtButtons();
+    updateTeamLabels();
+
+    lastAppliedAt = Date.now();
+    hideSyncError();
+  } catch (err) {
+    // Surface it ON SCREEN. This is the difference between "it silently
+    // breaks and nobody can tell why" and "it breaks, but you can read
+    // the exact error off the screen and report it back verbatim."
+    console.error('applyState failed on this snapshot:', err, state);
+    showSyncError(`Display error: ${err.message}`);
   }
-
-  renderRecentlyFinished();
-  renderHistory();
-
-  // Match timer: derived from a shared timestamp so it stays correct across
-  // refreshes and shows the same live count for the host and any viewers.
-  // 0 (our "not running" sentinel) and missing/non-numeric values both
-  // mean "no active match".
-  matchStartTime = typeof state.matchStartTime === 'number' && state.matchStartTime > 0
-    ? state.matchStartTime
-    : null;
-  if (matchStartTime !== null) {
-    matchTimerDisplay.hidden = false;
-    startTimerInterval();
-  } else {
-    matchTimerDisplay.hidden = true;
-    matchTimerDisplay.textContent = '⏱ 00:00';
-    stopTimerInterval();
-  }
-
-  updateCourtButtons();
-  updateTeamLabels();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -492,6 +566,40 @@ document.addEventListener('DOMContentLoaded', () => {
   playBtn.addEventListener('click', startMatch);
 
   clearHistoryBtn.addEventListener('click', clearHistory);
+
+  // Lets you compare versions on two separate phones with no dev tools:
+  // tap the "Synced Xs ago" line on each device and compare the toast.
+  // A mismatch here means one device is running stale cached code — the
+  // single most common reason "it works on one screen but not the other."
+  if (syncStatusText) {
+    syncStatusText.addEventListener('click', () => {
+      showToast(`Build: ${BUILD_ID}`);
+    });
+  }
+
+  if (forceSyncBtn) {
+    forceSyncBtn.addEventListener('click', () => {
+      // Manual, user-triggered escape hatch: pull the current DB state and
+      // reapply it right now, regardless of what the live listener or the
+      // poll are doing. Gives an immediate, on-demand answer to "is this
+      // actually connected?" instead of waiting and hoping.
+      if (!roomRef) return;
+      forceSyncBtn.classList.add('spinning');
+      roomRef
+        .once('value')
+        .then((snapshot) => {
+          const data = snapshot.val();
+          if (data) applyState(data);
+          showToast('Synced!');
+        })
+        .catch((err) => {
+          showSyncError(`Force sync failed: ${err.code || err.message}`);
+        })
+        .finally(() => {
+          forceSyncBtn.classList.remove('spinning');
+        });
+    });
+  }
 
   renderQueue();
   renderCourt();
@@ -612,6 +720,7 @@ function startMatch() {
   matchTimerDisplay.hidden = false;
   startTimerInterval();
   updateCourtButtons();
+  showToast('Match started!');
   syncStateToFirebase(); // MULTIPLAYER
 }
 
@@ -897,6 +1006,14 @@ function saveMatch() {
   };
 
   matchHistory.unshift(matchRecord);
+  // Cap how many matches we keep. Every entry can carry up to 4 embedded
+  // player photos as base64 — left unbounded, this room's Firebase node
+  // grows without limit and every load gets slower and more failure-prone.
+  // 200 matches is far more than a single session needs.
+  const MAX_HISTORY = 200;
+  if (matchHistory.length > MAX_HISTORY) {
+    matchHistory.length = MAX_HISTORY;
+  }
   // Append (never overwrite) so anyone still waiting to be requeued isn't lost.
   recentlyFinished = recentlyFinished.concat(
     courtPlayers.map((p) => ({ name: p.name, photo: p.photo }))
@@ -940,6 +1057,11 @@ function renderRecentlyFinished() {
   }
 
   recentlyFinished.forEach((player, index) => {
+    if (!player || !player.name) {
+      console.error('Skipping malformed recentlyFinished entry:', player);
+      return;
+    }
+
     const row = document.createElement('div');
     row.className = 'requeue-row';
 
@@ -996,14 +1118,32 @@ function renderHistory() {
   }
 
   matchHistory.forEach((match) => {
+    // Defensive: skip a single malformed record instead of throwing and
+    // leaving every match AFTER it in the list unrendered. A record could
+    // be malformed if a very old client version wrote a different shape,
+    // or a snapshot arrived mid-write.
+    if (!match || !Array.isArray(match.players) || match.players.length < 4) {
+      console.error('Skipping malformed match history entry:', match);
+      return;
+    }
+
     const item = document.createElement('div');
     item.className = 'history-item';
 
-    const [p0, p1, p2, p3] = match.players;
+    // Fallback objects so a single missing player field (e.g. an old
+    // record saved before "score" existed) can't crash the whole render.
+    const [p0, p1, p2, p3] = match.players.map((p) => ({
+      name: 'Unknown',
+      score: 0,
+      ...(p || {}),
+    }));
+
+    const team1Total = match.team1Total ?? 0;
+    const team2Total = match.team2Total ?? 0;
 
     let winner = null;
-    if (match.team1Total > match.team2Total) winner = 1;
-    else if (match.team2Total > match.team1Total) winner = 2;
+    if (team1Total > team2Total) winner = 1;
+    else if (team2Total > team1Total) winner = 2;
 
     const content = document.createElement('div');
     content.className = 'history-content';
@@ -1013,7 +1153,7 @@ function renderHistory() {
 
     const team1Line = document.createElement('div');
     team1Line.className = 'history-line' + (winner === 1 ? ' winner-line' : '');
-    team1Line.textContent = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${match.team1Total}]`;
+    team1Line.textContent = `${winner === 1 ? '\uD83C\uDFC6 ' : ''}${p0.name} (${p0.score}) & ${p1.name} (${p1.score}) [${team1Total}]`;
 
     const vsLine = document.createElement('div');
     vsLine.className = 'history-vs';
@@ -1021,7 +1161,7 @@ function renderHistory() {
 
     const team2Line = document.createElement('div');
     team2Line.className = 'history-line' + (winner === 2 ? ' winner-line' : '');
-    team2Line.textContent = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${match.team2Total}]`;
+    team2Line.textContent = `${winner === 2 ? '\uD83C\uDFC6 ' : ''}${p2.name} (${p2.score}) & ${p3.name} (${p3.score}) [${team2Total}]`;
 
     main.appendChild(team1Line);
     main.appendChild(vsLine);
