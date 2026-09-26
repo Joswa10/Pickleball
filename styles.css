@@ -419,12 +419,12 @@ input[type="text"].input-error {
 }
 
 .queue-photo {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   object-fit: cover;
   flex-shrink: 0;
-  font-size: 0.7rem;
+  font-size: 1.4rem;
 }
 
 .court-photo {
@@ -446,13 +446,13 @@ input[type="text"].input-error {
 }
 
 .history-photo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1.5px solid var(--dark-green);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 2.5px solid var(--dark-green);
   object-fit: cover;
   flex-shrink: 0;
-  font-size: 0.72rem;
+  font-size: 1.4rem;
 }
 
 .scroll-list {
@@ -467,10 +467,10 @@ input[type="text"].input-error {
 }
 
 .scroll-list li, .history-item {
-  padding: 6px 8px;
-  border-bottom: 1px solid #e0eee0;
-  font-size: 0.75rem;
-  font-weight: 500;
+  padding: 12px 16px;
+  border-bottom: 2px solid #e0eee0;
+  font-size: 1.5rem;
+  font-weight: 1000;
   color: var(--text-dark);
 }
 
@@ -493,6 +493,7 @@ input[type="text"].input-error {
 }
 
 .queue-left span {
+  font-size: 1.8rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
