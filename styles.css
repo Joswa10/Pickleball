@@ -817,7 +817,10 @@ body.viewer-mode #clearHistoryBtn {
   display: none !important;
 }
 
-@media (min-width: 700px) {
+/* ============================================================
+   TABLET / IPAD VIEW (700px to 1023px)
+   ============================================================ */
+@media (min-width: 700px) and (max-width: 1023px) {
   .app-frame {
     max-width: 900px;
     width: 92%;
@@ -861,5 +864,62 @@ body.viewer-mode #clearHistoryBtn {
 
   .court-visual {
     height: 220px;
+  }
+}
+
+/* ============================================================
+   MACBOOK / DESKTOP FULL-SCREEN VIEW (1024px and wider)
+   ============================================================ */
+@media (min-width: 1024px) {
+  .app-frame {
+    max-width: 100%;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  header {
+    padding-top: 16px;
+    border-radius: 0;
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+  }
+
+  .container {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "viewer  viewer  viewer"
+      "queue   court   finished"
+      "actions court   history";
+    gap: 18px;
+    padding: 20px 32px;
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .viewer-badge { grid-area: viewer; }
+  .container > section:nth-of-type(1) { grid-area: queue; }
+  .container > section:nth-of-type(2) { grid-area: court; }
+  .container > section:nth-of-type(3) { grid-area: actions; }
+  .container > section:nth-of-type(4) { grid-area: finished; }
+  .container > section:nth-of-type(5) { grid-area: history; }
+
+  #queueList {
+    max-height: 380px;
+  }
+
+  .scroll-list {
+    max-height: 220px;
+  }
+
+  .court-visual {
+    height: 300px;
   }
 }
