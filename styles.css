@@ -1,11 +1,9 @@
 :root {
-  --dark-green: #2d5a52;   /* Deep frosty teal for the top header */
-  --mid-green: #3b7a6f;    /* Smooth sage-teal for buttons */
-  --light-green: #b2d8d0;  /* Pale mint for card borders & input outlines */
-  --pale-green: #eaf4f2;   /* Very light frosty green for the main app background */
-  
-  /* Keep the rest of your variables the same below */
- --court-blue: #304049;    /* Dark slate blue for the main court playing area */
+  --dark-green: #2d5a52;
+  --mid-green: #3b7a6f;
+  --light-green: #b2d8d0;
+  --pale-green: #eaf4f2;
+  --court-blue: #304049;
   --kitchen-blue: #5b6e68;
   --text-dark: #1c2e2a;
   --text-muted: #527068;
@@ -61,10 +59,6 @@ header {
   box-shadow: 0 2px 4px rgba(0,0,0,0.12);
 }
 
-/* ---------------------------------------------------------
-   MULTIPLAYER: mini QR toggle icon (Host only) — sits in the
-   header's top-right corner; tapping it opens the QR modal.
---------------------------------------------------------- */
 .header-icon-row {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));
@@ -90,8 +84,6 @@ header {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Manual "force sync" icon spins while a resync request is in flight, so
-   tapping it gives immediate visual feedback instead of feeling inert. */
 .qr-toggle-btn.spinning svg {
   animation: sync-spin 0.8s linear infinite;
 }
@@ -116,11 +108,6 @@ header p {
   letter-spacing: 0.2px;
 }
 
-/* SYNC VISIBILITY: always-on staleness indicator in the header. Turns
-   amber/bold once data hasn't refreshed in a while — see
-   updateSyncIndicator() in script.js — so a stuck sync is visible at a
-   glance instead of quietly showing old data with no signal anything is
-   wrong. */
 .sync-status-text {
   font-size: 0.68rem !important;
   opacity: 0.75;
@@ -135,9 +122,6 @@ header p {
   font-weight: 700;
 }
 
-/* SYNC VISIBILITY: persistent error banner — stays up until a snapshot
-   applies successfully again (see showSyncError/hideSyncError), unlike a
-   toast which disappears whether or not anyone saw it. */
 .sync-error-banner {
   background: var(--danger-red, #c0392b);
   color: #ffffff;
@@ -197,11 +181,6 @@ header p {
   gap: 6px;
 }
 
-/* ---------------------------------------------------------
-   MULTIPLAYER: QR modal (Host) — white popup with the QR
-   code, room code, and copy-link button. Opened via the
-   mini icon in the header; closed via × or an outside click.
---------------------------------------------------------- */
 .qr-modal-overlay {
   position: absolute;
   inset: 0;
@@ -213,12 +192,6 @@ header p {
   z-index: 60;
 }
 
-/* FIX: .qr-modal-overlay above sets `display: flex` unconditionally,
-   which has equal specificity to (and loads after) the browser's
-   built-in `[hidden] { display: none }` UA rule — so author CSS wins
-   and the `hidden` attribute set by script.js was being ignored,
-   leaving the modal visible even after the × button set `hidden = true`.
-   This rule restores `hidden` as the authority for this element. */
 .qr-modal-overlay[hidden] {
   display: none;
 }
@@ -287,7 +260,6 @@ header p {
   width: 100%;
 }
 
-/* MULTIPLAYER: Viewer badge (Viewer mode) — replaces the room card */
 .viewer-badge {
   flex-shrink: 0;
   background: var(--dark-green);
@@ -300,12 +272,6 @@ header p {
   letter-spacing: 0.3px;
 }
 
-/* ---------------------------------------------------------
-   CONNECTION STATUS: shown whenever the Firebase realtime
-   link drops (tab frozen/backgrounded, wifi hiccup, etc.),
-   so it's obvious the screen may be stale instead of the
-   app silently pretending everything is current.
---------------------------------------------------------- */
 .connection-banner {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));
@@ -345,7 +311,7 @@ input[type="text"] {
   padding: 8px 10px;
   border: 1.5px solid var(--light-green);
   border-radius: 6px;
-  font-size: 16px; /* Prevents auto-zoom on iOS focus */
+  font-size: 16px;
   font-weight: 500;
   color: var(--text-dark);
   outline: none;
@@ -367,9 +333,6 @@ input[type="text"].input-error {
   75% { transform: translateX(4px); }
 }
 
-/* ---------------------------------------------------------
-   Photo picker (add-player row)
---------------------------------------------------------- */
 .photo-picker {
   position: relative;
   width: 38px;
@@ -404,11 +367,6 @@ input[type="text"].input-error {
   display: block;
 }
 
-/* ---------------------------------------------------------
-   Shared avatar box — photos always fill their box (cropped
-   via object-fit: cover), with a solid initial as fallback
-   when a player has no photo.
---------------------------------------------------------- */
 .avatar-fallback {
   display: flex;
   align-items: center;
@@ -418,6 +376,10 @@ input[type="text"].input-error {
   font-weight: 700;
 }
 
+/* ---------------------------------------------------------
+   Waiting Queue photo — bigger square avatar, cleanly
+   cropped/centered no matter what photo was uploaded.
+--------------------------------------------------------- */
 .queue-photo {
   width: 44px;
   height: 44px;
@@ -446,14 +408,17 @@ input[type="text"].input-error {
   font-size: 0.68rem;
 }
 
+/* ---------------------------------------------------------
+   Match History winner photo — bigger.
+--------------------------------------------------------- */
 .history-photo {
   width: 40px;
   height: 40px;
-  border-radius: 3px;
-  border: 2.5px solid var(--dark-green);
+  border-radius: 8px;
+  border: 1.5px solid var(--dark-green);
   object-fit: cover;
   flex-shrink: 0;
-  font-size: 1.4rem;
+  font-size: 1rem;
 }
 
 .scroll-list {
@@ -467,6 +432,8 @@ input[type="text"].input-error {
   list-style: none;
 }
 
+/* Waiting Queue list grows to fill its card instead of
+   stopping at a small fixed height. */
 #queueList {
   flex: 1;
   min-height: 0;
@@ -474,10 +441,10 @@ input[type="text"].input-error {
 }
 
 .scroll-list li, .history-item {
-  padding: 12px 16px;
-  border-bottom: 2px solid #e0eee0;
-  font-size: 1.5rem;
-  font-weight: 1000;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e0eee0;
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--text-dark);
 }
 
@@ -499,6 +466,10 @@ input[type="text"].input-error {
   min-width: 0;
 }
 
+/* ---------------------------------------------------------
+   Waiting Queue player name — normal size but a touch
+   bolder/cleaner than the default row text.
+--------------------------------------------------------- */
 .queue-left span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -507,6 +478,7 @@ input[type="text"].input-error {
   font-weight: 700;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   letter-spacing: 0.2px;
+  color: var(--text-dark);
 }
 
 .queue-del-btn {
@@ -537,7 +509,7 @@ input[type="text"].input-error {
 }
 
 .court-visual {
-  background: var(--court-blue, #3b5266); /* Dark slate blue */
+  background: var(--court-blue, #3b5266);
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -555,7 +527,7 @@ input[type="text"].input-error {
   left: 0;
   right: 0;
   height: 40%;
-  background: var(--kitchen-blue, #5b6e68); /* Olive-slate grey-green */
+  background: var(--kitchen-blue, #5b6e68);
   pointer-events: none;
 }
 
@@ -571,7 +543,13 @@ input[type="text"].input-error {
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------
+   Court slot — photo fills the whole white box as a
+   background layer; name/score sit on top in small pills.
+--------------------------------------------------------- */
 .slot {
+  position: relative;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.98);
   border: 1.5px solid var(--dark-green);
   border-radius: 6px;
@@ -581,19 +559,17 @@ input[type="text"].input-error {
   justify-content: flex-end;
   z-index: 3;
   padding: 4px;
-  position: relative;
-  overflow: hidden;
 }
 
 .player-info {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 4px;
   max-width: 100%;
   min-width: 0;
-  position: relative;
-  z-index: 2;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.9);
   padding: 2px 6px;
   border-radius: 10px;
 }
@@ -605,6 +581,8 @@ input[type="text"].input-error {
 }
 
 .player-name {
+  position: relative;
+  z-index: 2;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-dark);
@@ -616,13 +594,13 @@ input[type="text"].input-error {
 }
 
 .score-control {
+  position: relative;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 3px;
-  position: relative;
-  z-index: 2;
-  background: rgba(255, 255, 255, 0.85);
   padding: 2px 6px;
   border-radius: 10px;
 }
@@ -727,10 +705,6 @@ button:disabled:active {
 .btn-warning { background: #ffe082; color: #4e342e; }
 .btn-play { background: #ef6c00; color: #ffffff; }
 
-/* ---------------------------------------------------------
-   Match timer — shown above the SAVE button once PLAY has
-   been pressed; ticks live and is visible to viewers too.
---------------------------------------------------------- */
 .match-timer {
   text-align: center;
   font-weight: 800;
@@ -764,11 +738,6 @@ button:disabled:active {
   white-space: nowrap;
 }
 
-/* ---------------------------------------------------------
-   Match history — winner line on top, VS in the middle,
-   loser line on the bottom, with the winning team's two
-   photos anchored to the right.
---------------------------------------------------------- */
 .history-item {
   display: flex;
   flex-direction: column;
@@ -821,7 +790,6 @@ button:disabled:active {
   font-weight: 600;
 }
 
-/* Toast notification (replaces alert() popups on mobile) */
 .toast {
   position: absolute;
   left: 50%;
@@ -851,12 +819,6 @@ button:disabled:active {
   background: var(--danger-red);
 }
 
-/* ---------------------------------------------------------
-   MULTIPLAYER: Viewer mode — hides every control a spectator
-   shouldn't touch. Recently Finished and Match History are visible
-   (read-only) to spectators too — see the .host-only-section note in
-   index.html for why they're no longer force-hidden.
---------------------------------------------------------- */
 body.viewer-mode .input-row,
 body.viewer-mode .action-row,
 body.viewer-mode .court-actions-bar,
@@ -868,10 +830,6 @@ body.viewer-mode #clearHistoryBtn {
   display: none !important;
 }
 
-/* ---------------------------------------------------------
-   Tablet / desktop layout (iPad and up) — the phone layout
-   above is untouched; this only kicks in on wider screens.
---------------------------------------------------------- */
 @media (min-width: 700px) {
   .app-frame {
     max-width: 900px;
