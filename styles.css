@@ -426,9 +426,8 @@ input[type="text"].input-error {
 }
 
 #queueList {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .scroll-list li, .history-item {
