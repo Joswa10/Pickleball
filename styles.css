@@ -593,22 +593,28 @@ input[type="text"].input-error {
 
 .player-name {
   z-index: 2;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--text-dark);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #ffffff;
+  -webkit-text-stroke: 3px #000000;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  padding: 3px 10px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
-
 .score-control {
   z-index: 2;
   background: rgba(255, 255, 255, 0.9);
