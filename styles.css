@@ -482,7 +482,12 @@ input[type="text"].input-error {
   font-weight: 700;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   letter-spacing: 0.2px;
-  color: var(--text-dark);
+  color: var(--dark-green);
+  background: rgba(178, 216, 208, 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding: 4px 10px;
+  border-radius: 8px;
 }
 
 .queue-del-btn {
@@ -596,6 +601,12 @@ input[type="text"].input-error {
   text-overflow: ellipsis;
   max-width: 100%;
   min-width: 0;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 3px 10px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .score-control {
