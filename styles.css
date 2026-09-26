@@ -562,7 +562,6 @@ input[type="text"].input-error {
 }
 
 .player-info {
-  position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -578,10 +577,10 @@ input[type="text"].input-error {
   position: absolute;
   inset: 0;
   display: flex;
+  z-index: 1;
 }
 
 .player-name {
-  position: relative;
   z-index: 2;
   font-size: 0.8rem;
   font-weight: 700;
@@ -594,7 +593,6 @@ input[type="text"].input-error {
 }
 
 .score-control {
-  position: relative;
   z-index: 2;
   background: rgba(255, 255, 255, 0.9);
   display: flex;
