@@ -428,12 +428,12 @@ input[type="text"].input-error {
 }
 
 .court-photo {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
   object-fit: cover;
   flex-shrink: 0;
-  font-size: 0.6rem;
+  font-size: 1.4rem;
 }
 
 .finished-photo {
@@ -574,9 +574,11 @@ input[type="text"].input-error {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   z-index: 3;
-  padding: 2px 4px;
+  padding: 4px;
+  position: relative;
+  overflow: hidden;
 }
 
 .player-info {
@@ -585,11 +587,17 @@ input[type="text"].input-error {
   gap: 4px;
   max-width: 100%;
   min-width: 0;
+  position: relative;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 6px;
+  border-radius: 10px;
 }
 
 .player-photo-wrap {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-shrink: 0;
 }
 
 .player-name {
@@ -608,6 +616,11 @@ input[type="text"].input-error {
   align-items: center;
   gap: 6px;
   margin-top: 3px;
+  position: relative;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 6px;
+  border-radius: 10px;
 }
 
 .score-val {
