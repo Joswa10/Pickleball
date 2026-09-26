@@ -421,7 +421,7 @@ input[type="text"].input-error {
 .queue-photo {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 3px;
   object-fit: cover;
   flex-shrink: 0;
   font-size: 1.4rem;
@@ -448,7 +448,7 @@ input[type="text"].input-error {
 .history-photo {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 3px;
   border: 2.5px solid var(--dark-green);
   object-fit: cover;
   flex-shrink: 0;
@@ -464,6 +464,12 @@ input[type="text"].input-error {
   padding: 0;
   margin: 0;
   list-style: none;
+}
+
+#queueList {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .scroll-list li, .history-item {
@@ -493,10 +499,10 @@ input[type="text"].input-error {
 }
 
 .queue-left span {
-  font-size: 1.8rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.85rem;
 }
 
 .queue-del-btn {
