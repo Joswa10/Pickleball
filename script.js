@@ -1339,12 +1339,14 @@ function renderHistory() {
 
     // Show the winning team's two photos on the right. On a tie, default
     // to team 1's photos since there's no outright winner to feature.
-    const photosWrap = document.createElement('div');
-    photosWrap.className = 'history-photos';
-    const winningPlayers = winner === 2 ? [p2, p3] : [p0, p1];
-    winningPlayers.forEach((p) => {
-      photosWrap.appendChild(createAvatarElement(p, 'history-photo'));
-    });
+ const photosWrap = document.createElement('div');
+photosWrap.className = 'history-photos';
+if (winner) {
+  const winningPlayers = winner === 2 ? [p2, p3] : [p0, p1];
+  winningPlayers.forEach((p) => {
+    photosWrap.appendChild(createAvatarElement(p, 'history-photo'));
+  });
+}
 
     content.appendChild(main);
     content.appendChild(photosWrap);
