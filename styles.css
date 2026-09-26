@@ -376,10 +376,6 @@ input[type="text"].input-error {
   font-weight: 700;
 }
 
-/* ---------------------------------------------------------
-   Waiting Queue photo — bigger square avatar, cleanly
-   cropped/centered no matter what photo was uploaded.
---------------------------------------------------------- */
 .queue-photo {
   width: 44px;
   height: 44px;
@@ -391,14 +387,10 @@ input[type="text"].input-error {
 }
 
 .court-photo {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: none !important;
-  max-height: none !important;
-  border-radius: 0 !important;
-  object-fit: cover !important;
-  position: absolute !important;
-  inset: 0 !important;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
   flex-shrink: 0;
   font-size: 1.4rem;
 }
@@ -412,9 +404,6 @@ input[type="text"].input-error {
   font-size: 0.68rem;
 }
 
-/* ---------------------------------------------------------
-   Match History winner photo — bigger.
---------------------------------------------------------- */
 .history-photo {
   width: 40px;
   height: 40px;
@@ -436,8 +425,6 @@ input[type="text"].input-error {
   list-style: none;
 }
 
-/* Waiting Queue list grows to fill its card instead of
-   stopping at a small fixed height. */
 #queueList {
   flex: 1;
   min-height: 0;
@@ -470,17 +457,12 @@ input[type="text"].input-error {
   min-width: 0;
 }
 
-/* ---------------------------------------------------------
-   Waiting Queue player name — normal size but a touch
-   bolder/cleaner than the default row text.
---------------------------------------------------------- */
 .queue-left span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 1rem;
   font-weight: 700;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   letter-spacing: 0.2px;
   color: var(--dark-green);
   background: rgba(178, 216, 208, 0.45);
@@ -552,13 +534,9 @@ input[type="text"].input-error {
   pointer-events: none;
 }
 
-/* ---------------------------------------------------------
-   Court slot — photo fills the whole white box as a
-   background layer; name/score sit on top in small pills.
---------------------------------------------------------- */
 .slot {
-  position: relative !important;
-  overflow: hidden !important;
+  position: relative;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.98);
   border: 1.5px solid var(--dark-green);
   border-radius: 6px;
@@ -577,17 +555,12 @@ input[type="text"].input-error {
   gap: 4px;
   max-width: 100%;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 2px 6px;
-  border-radius: 10px;
 }
 
 .player-photo-wrap {
-  position: absolute !important;
-  inset: 0 !important;
-  display: flex !important;
-  width: 100% !important;
-  height: 100% !important;
+  position: absolute;
+  inset: 0;
+  display: flex;
   z-index: 1;
 }
 
@@ -595,10 +568,9 @@ input[type="text"].input-error {
   z-index: 2;
   font-size: 0.85rem;
   font-weight: 700;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   letter-spacing: 0.2px;
-  color: var(--dark-green) !important;
-  background: rgba(178, 216, 208, 0.85) !important;
+  color: var(--dark-green);
+  background: rgba(178, 216, 208, 0.85);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   padding: 4px 10px;
@@ -608,9 +580,6 @@ input[type="text"].input-error {
   text-overflow: ellipsis;
   max-width: 100%;
   min-width: 0;
-  -webkit-text-stroke: 0 transparent !important;
-  text-shadow: none !important;
-  box-shadow: none;
 }
 
 .score-control {
